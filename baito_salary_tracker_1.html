@@ -1,0 +1,1627 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="バイト給与">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0E4B44">
+<title>バイト給与・税金トラッカー</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #F1F5F4;
+    --panel: #FFFFFF;
+    --ink: #16302B;
+    --ink-soft: #4B655F;
+    --line: #DCE6E2;
+    --teal: #0E4B44;
+    --teal-deep: #0A332E;
+    --gold: #B8892B;
+    --gold-soft: #F1E3C6;
+    --danger: #B4432E;
+    --good: #2E7D5B;
+    --radius: 14px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family:'Zen Kaku Gothic New', sans-serif;
+    padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+    -webkit-font-smoothing: antialiased;
+  }
+  .num{ font-family:'JetBrains Mono', monospace; }
+  .wrap{ max-width: 880px; margin: 0 auto; }
+
+  header.top{
+    display:flex; align-items:baseline; justify-content:space-between;
+    margin-bottom: 18px; flex-wrap:wrap; gap:8px;
+  }
+  header.top h1{
+    font-size: 20px; font-weight:900; margin:0; letter-spacing:.02em;
+    color: var(--teal-deep);
+  }
+  header.top .sub{ font-size:12px; color: var(--ink-soft); }
+
+  nav.tabs{
+    display:flex; gap:4px; margin-bottom:18px;
+    border-bottom: 1px solid var(--line);
+  }
+  nav.tabs button{
+    appearance:none; border:none; background:transparent;
+    padding: 10px 14px; font-size:13.5px; font-weight:700; color: var(--ink-soft);
+    cursor:pointer; border-bottom: 2px solid transparent; font-family:inherit;
+    transition: color .15s, border-color .15s;
+  }
+  nav.tabs button.active{ color: var(--teal-deep); border-bottom-color: var(--gold); }
+  nav.tabs button:hover{ color: var(--teal-deep); }
+
+  .panel{
+    background: var(--panel); border:1px solid var(--line); border-radius: var(--radius);
+    padding: 20px; margin-bottom: 16px;
+  }
+  .panel h2{ font-size:14px; margin:0 0 14px; color:var(--teal-deep); font-weight:700; }
+  .panel h2 .tag{
+    display:inline-block; font-size:10.5px; font-weight:700; color:var(--gold);
+    background: var(--gold-soft); padding:2px 7px; border-radius:20px; margin-left:8px; vertical-align:middle;
+  }
+
+  .grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap:12px; }
+  label{ display:block; font-size:11.5px; color:var(--ink-soft); margin-bottom:4px; font-weight:700;}
+  input[type=number], input[type=date], input[type=time]{
+    width:100%; padding:8px 9px; border:1px solid var(--line); border-radius:8px;
+    font-size:14px; font-family:'JetBrains Mono', monospace; background:#FBFDFC; color:var(--ink);
+  }
+  select{
+    width:100%; padding:8px 30px 8px 10px; border:1px solid var(--line); border-radius:9px;
+    font-size:14px; font-family:'JetBrains Mono', monospace; background:#FBFDFC; color:var(--ink);
+    appearance:none; -webkit-appearance:none; -moz-appearance:none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%234B655F' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+    background-repeat:no-repeat; background-position: right 10px center;
+    cursor:pointer; transition: border-color .15s, box-shadow .15s, background-color .15s;
+  }
+  select:hover{ border-color: var(--gold); background-color:#fff; }
+  select:focus{ outline:none; border-color: var(--gold); box-shadow: 0 0 0 3px rgba(184,137,43,.18); }
+  input:focus, select:focus{ outline:2px solid var(--gold); outline-offset:1px; }
+
+  .row-field{ margin-bottom:10px; }
+
+  button.btn{
+    appearance:none; border:none; cursor:pointer; font-family:inherit; font-weight:700;
+    padding:10px 18px; border-radius:9px; font-size:13.5px; background:var(--teal); color:#fff;
+    transition: background .15s;
+  }
+  button.btn:hover{ background:var(--teal-deep); }
+  button.btn.ghost{
+    background:transparent; color:var(--danger); border:1px solid var(--line); padding:5px 10px; font-size:12px;
+  }
+  button.btn.ghost:hover{ background:#FBEDE9; }
+  button.btn.small{ padding:6px 12px; font-size:12px; }
+  .quick-shift-btn{
+    appearance:none; border:1px solid var(--line); background:#FBFDFC; color:var(--teal-deep);
+    padding:6px 13px; border-radius:20px; font-size:12.5px; font-weight:700; cursor:pointer;
+    transition: background .15s, border-color .15s;
+  }
+  .quick-shift-btn:hover{ background: var(--gold-soft); border-color: var(--gold); }
+
+  table{ width:100%; border-collapse:collapse; font-size:13px; }
+  th{ text-align:left; color:var(--ink-soft); font-size:11px; padding:6px 8px; border-bottom:1px solid var(--line); }
+  td{ padding:8px; border-bottom:1px solid #EEF2F0; }
+  tr:last-child td{ border-bottom:none; }
+  td.num, th.num{ text-align:right; font-family:'JetBrains Mono', monospace; }
+
+  .stat-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:6px; }
+  .stat{
+    background:#FBFDFC; border:1px solid var(--line); border-radius:10px; padding:12px 14px;
+  }
+  .stat .label{ font-size:11px; color:var(--ink-soft); font-weight:700; margin-bottom:4px;}
+  .stat .value{ font-size:19px; font-weight:700; color:var(--teal-deep); }
+  .stat .value.gold{ color:var(--gold); }
+
+  .bar-wrap{ margin-bottom:16px; }
+  .bar-head{ display:flex; justify-content:space-between; font-size:12.5px; margin-bottom:5px; }
+  .bar-head .name{ font-weight:700; color:var(--ink); }
+  .bar-head .nums{ font-family:'JetBrains Mono', monospace; color:var(--ink-soft); }
+  .bar-track{ height:9px; background:#E7EEEB; border-radius:6px; overflow:hidden; }
+  .bar-fill{ height:100%; border-radius:6px; background: var(--teal); transition: width .3s; }
+  .bar-fill.warn{ background: var(--gold); }
+  .bar-fill.danger{ background: var(--danger); }
+  .bar-note{ font-size:11px; color:var(--ink-soft); margin-top:4px; }
+
+  .cycle-nav{ display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  .cycle-nav .label{ font-size:13px; font-weight:700; color:var(--teal-deep); flex:1; }
+
+  select.cycle-select{ max-width:260px; }
+
+  .empty{ text-align:center; color:var(--ink-soft); font-size:13px; padding:20px 0; }
+
+  .foot-note{ font-size:11px; color:var(--ink-soft); line-height:1.6; margin-top:4px; }
+  .divider{ height:1px; background:var(--line); margin:16px 0; }
+
+  @media (max-width:520px){
+    .grid{ grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <h1>💼 バイト給与トラッカー</h1>
+    <div class="sub">複数バイト先 / 時間帯別時給 / 通勤費 / 年収の壁 を自動管理</div>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button data-tab="entry" class="active">シフト入力</button>
+    <button data-tab="actual">受取実績</button>
+    <button data-tab="cycle">給与サイクル</button>
+    <button data-tab="annual">年間・壁管理</button>
+    <button data-tab="settings">設定</button>
+  </nav>
+
+  <div id="job-switcher-bar" style="margin-bottom:16px; display:flex; align-items:center; gap:10px;">
+    <label style="margin:0; white-space:nowrap; font-size:12px;">バイト先:</label>
+    <select id="global-job-select" style="max-width:260px;"></select>
+  </div>
+
+  <!-- ENTRY TAB -->
+  <div class="tabpage" id="page-entry">
+    <div class="panel">
+      <h2>シフトを追加</h2>
+      <div class="foot-note" style="margin-bottom:12px;">上の「バイト先」で選んだ勤務先のシフトとして登録されます。</div>
+      <div id="quick-shift-buttons" style="display:none; gap:8px; flex-wrap:wrap; margin-bottom:14px;"></div>
+      <div class="grid">
+        <div class="row-field"><label>勤務日</label><input type="date" id="in-date"></div>
+        <div class="row-field"><label>開始時刻</label>
+          <div style="display:flex; gap:5px; align-items:center;">
+            <select id="in-start-h" style="flex:1;"></select><span style="opacity:.5;">:</span><select id="in-start-m" style="flex:1;"></select>
+          </div>
+        </div>
+        <div class="row-field"><label>終了時刻</label>
+          <div style="display:flex; gap:5px; align-items:center;">
+            <select id="in-end-h" style="flex:1;"></select><span style="opacity:.5;">:</span><select id="in-end-m" style="flex:1;"></select>
+          </div>
+        </div>
+        <div class="row-field"><label>休憩(分・任意)</label><input type="number" id="in-break" value="0" min="0" step="5"></div>
+      </div>
+      <button class="btn" id="btn-add-shift" style="margin-top:6px;">＋ シフトを追加</button>
+      <div class="foot-note" id="preview-note" style="margin-top:10px;"></div>
+    </div>
+
+    <div class="panel">
+      <h2>登録済みシフト <span class="tag" id="shift-count-tag">0件</span></h2>
+      <div class="foot-note" style="margin-bottom:10px;">ここは予定(計算値)の一覧です。実際に振り込まれた金額との訂正は「給与サイクル」タブで月単位に行えます。</div>
+      <div style="max-height:360px; overflow:auto;">
+        <table>
+          <thead><tr>
+            <th>日付</th><th>曜日/区分</th><th>時間</th><th class="num">日給(予定)</th><th class="num">交通(往復)</th><th></th>
+          </tr></thead>
+          <tbody id="shift-table-body"></tbody>
+        </table>
+        <div class="empty" id="shift-empty" style="display:none;">まだシフトが登録されていません</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ACTUAL PAYMENTS TAB -->
+  <div class="tabpage" id="page-actual" style="display:none;">
+    <div class="panel">
+      <h2>すでに受け取った給料を記録する</h2>
+      <div class="foot-note" style="margin-bottom:14px;">
+        上の「バイト先」で選んだ勤務先の記録として登録されます。このアプリを使い始める前にもらった給与明細の内容を、月ごとに「課税対象の支給額」と「非課税の交通費」に分けて入力してください。ここで入力した分は年間の壁トラッキング(年間・壁管理タブ)にすべてのバイト先分を合算してそのまま反映されます。<br>
+        <b>注意:</b> シフト入力タブで計算した期間と同じ月をここにも入力すると二重計上になります。
+      </div>
+      <div class="grid">
+        <div class="row-field"><label>支払年月</label><input type="month" id="ap-month"></div>
+        <div class="row-field"><label>課税支給額(円・交通費は除く)</label><input type="number" id="ap-taxable" min="0" step="1"></div>
+        <div class="row-field"><label>非課税交通費(円)</label><input type="number" id="ap-commute" min="0" step="1"></div>
+      </div>
+      <div class="row-field" style="margin-top:10px;">
+        <label>備考(任意)</label>
+        <input type="text" id="ap-note" placeholder="例: 1月分給与" style="font-family:'Zen Kaku Gothic New',sans-serif;">
+      </div>
+      <button class="btn" id="btn-add-actual" style="margin-top:6px;">＋ 記録を追加</button>
+    </div>
+
+    <div class="panel">
+      <h2>入力済みの実績 <span class="tag" id="actual-count-tag">0件</span></h2>
+      <table>
+        <thead><tr><th>支払年月</th><th class="num">課税支給額</th><th class="num">非課税交通費</th><th class="num">合計</th><th>備考</th><th></th></tr></thead>
+        <tbody id="actual-table-body"></tbody>
+      </table>
+      <div class="empty" id="actual-empty" style="display:none;">まだ記録がありません</div>
+      <div class="divider"></div>
+      <div class="stat-grid">
+        <div class="stat"><div class="label">実績合計(課税対象)</div><div class="value num" id="ap-total-taxable">-</div></div>
+        <div class="stat"><div class="label">実績合計(非課税交通費)</div><div class="value num gold" id="ap-total-commute">-</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CYCLE TAB -->
+  <div class="tabpage" id="page-cycle" style="display:none;">
+    <div class="panel">
+      <div class="cycle-nav">
+        <div class="label">給与サイクル(上で選んだバイト先の設定に基づく)</div>
+        <select class="cycle-select" id="cycle-select"></select>
+      </div>
+      <div class="stat-grid">
+        <div class="stat"><div class="label">対象期間の勤務日数</div><div class="value num" id="c-days">-</div></div>
+        <div class="stat"><div class="label">給与(予定・計算値)</div><div class="value num" id="c-wage-computed">-</div></div>
+        <div class="stat"><div class="label">交通費(予定・計算値)</div><div class="value num" id="c-commute-computed">-</div></div>
+      </div>
+      <div class="foot-note" id="c-commute-note" style="margin:6px 0 16px;"></div>
+
+      <div class="grid" style="margin-bottom:6px;">
+        <div class="row-field">
+          <label>実際に振り込まれた給与(訂正・任意)</label>
+          <input type="number" id="c-wage-correction" placeholder="予定通り">
+        </div>
+        <div class="row-field">
+          <label>実際に振り込まれた交通費(訂正・任意)</label>
+          <input type="number" id="c-commute-correction" placeholder="予定通り">
+        </div>
+      </div>
+      <div class="foot-note" style="margin-bottom:14px;">実際の支給額が予定と違った場合はここに入力してください。以降の年間集計はここで入力した金額を優先して使います。</div>
+
+      <div class="stat-grid">
+        <div class="stat"><div class="label">給与(実績反映後)</div><div class="value num" id="c-wage">-</div></div>
+        <div class="stat"><div class="label">交通費(実績反映後)</div><div class="value num gold" id="c-commute">-</div></div>
+        <div class="stat"><div class="label">支給合計</div><div class="value num" id="c-total">-</div></div>
+      </div>
+      <div class="foot-note" id="c-payday" style="font-size:12.5px; font-weight:700; color:var(--teal-deep);"></div>
+      <div class="divider"></div>
+      <table>
+        <thead><tr><th>日付</th><th>区分</th><th>時間</th><th class="num">日給</th></tr></thead>
+        <tbody id="cycle-table-body"></tbody>
+      </table>
+      <div class="empty" id="cycle-empty" style="display:none;">この期間のシフトはありません</div>
+    </div>
+  </div>
+
+  <!-- ANNUAL TAB -->
+  <div class="tabpage" id="page-annual" style="display:none;">
+    <div class="panel">
+      <h2>年間の給与収入 <span class="tag" id="year-tag">2026年</span></h2>
+      <div class="foot-note" id="a-commute-note" style="margin-bottom:14px;"></div>
+      <div class="stat-grid" style="margin-bottom:18px;">
+        <div class="stat"><div class="label">年間累計収入(通勤費除く)</div><div class="value num" id="a-total">-</div></div>
+        <div class="stat"><div class="label">月平均ペース</div><div class="value num" id="a-pace">-</div></div>
+        <div class="stat"><div class="label">このペースの年末着地予想</div><div class="value num gold" id="a-projection">-</div></div>
+      </div>
+      <div class="foot-note" id="a-breakdown" style="margin-bottom:16px;"></div>
+
+      <div id="wall-bars"></div>
+
+      <div class="divider"></div>
+      <div class="foot-note">
+        <span style="opacity:.75">※ 表示される壁はプロフィール設定(学生か、扶養に入っているか等)によって変わります。また制度自体も変更される可能性があるので、最新情報は必ず公式サイトでご確認ください。</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- SETTINGS TAB -->
+  <div class="tabpage" id="page-settings" style="display:none;">
+    <div class="panel">
+      <h2>プロフィール設定</h2>
+      <div class="grid">
+        <div class="row-field"><label>学生ですか?</label>
+          <select id="s-is-student"><option value="true">はい</option><option value="false">いいえ(パート等)</option></select>
+        </div>
+        <div class="row-field" id="s-gakusei-tokurei-wrap"><label>学生納付特例を利用していますか?</label>
+          <select id="s-gakusei-tokurei"><option value="true">はい</option><option value="false">いいえ</option></select>
+        </div>
+        <div class="row-field"><label>誰かの税法上の扶養に入っていますか?</label>
+          <select id="s-dependent-tax"><option value="true">はい</option><option value="false">いいえ</option></select>
+        </div>
+        <div class="row-field" id="s-dependent-relationship-wrap"><label>扶養している方との続柄</label>
+          <select id="s-dependent-relationship">
+            <option value="student_child">親の子(19〜22歳の学生年代)</option>
+            <option value="spouse">配偶者(夫・妻)</option>
+            <option value="other">その他の親族(16歳以上の子・親など)</option>
+          </select>
+        </div>
+        <div class="row-field"><label>社会保険の扶養(親・配偶者)に入っていますか?</label>
+          <select id="s-dependent-shaho"><option value="true">はい</option><option value="false">いいえ</option></select>
+        </div>
+      </div>
+      <div class="foot-note" style="margin-top:8px;">
+        ここでの回答に応じて、「年間・壁管理」タブに表示される壁の項目・金額・注釈が自動的に変わります(すべてのバイト先に共通の設定です)。パート主婦・主夫の方は「学生ですか?」を「いいえ」に、続柄を「配偶者」にすると、配偶者控除・配偶者特別控除ベースの壁に切り替わります。<br>
+        ※ 会社によっては配偶者や扶養家族の収入額に応じて「家族手当・扶養手当」を支給する制度があり、その基準額(多くは103万円か130万円あたり)を超えると手当が無くなることがあります。これは会社ごとの制度なので、この壁トラッキングには含まれていません。心当たりがあれば勤務先の規定を確認してみてください。
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>バイト先管理 <span class="tag" id="jobs-count-tag">0件</span></h2>
+      <div class="foot-note" style="margin-bottom:14px;">バイト先ごとに時給・時間帯・交通費を別々に設定できます。「年間・壁管理」タブでは、すべてのバイト先の収入を合算して壁を判定します。</div>
+      <div id="jobs-list"></div>
+      <button class="btn small" id="btn-add-job" type="button" style="margin-top:6px;">＋ バイト先を追加</button>
+    </div>
+
+    <div class="panel">
+      <h2>祝日カレンダー</h2>
+      <button class="btn small" id="btn-fetch-holidays">🌐 祝日を自動取得(オンライン)</button>
+      <div class="foot-note" id="holiday-fetch-status" style="margin-top:8px;"></div>
+      <div class="divider"></div>
+      <div class="grid">
+        <div class="row-field"><label>祝日を追加(手動)</label><input type="date" id="s-holiday-add"></div>
+      </div>
+      <button class="btn small" id="btn-add-holiday">＋ 追加</button>
+      <div class="foot-note" style="margin-top:10px;">2026年・2027年の国民の祝日はあらかじめ内閣府データで登録済みです。振替休日・国民の休日も含みます。</div>
+      <div style="max-height:160px; overflow:auto; margin-top:10px;">
+        <table><tbody id="holiday-table-body"></tbody></table>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>保存先 <span class="tag" id="storage-mode-tag">-</span></h2>
+      <div class="foot-note" id="storage-status-note" style="margin-bottom:12px;"></div>
+      <button class="btn small" id="btn-connect-fs">📁 保存先ファイルを選択(PC・Chrome/Edge推奨)</button>
+      <button class="btn small" id="btn-reconnect-fs" style="display:none; background:var(--gold); color:#fff;">🔄 ファイルへの接続を再開</button>
+      <button class="btn ghost" id="btn-disconnect-fs" style="display:none;">同期を解除</button>
+    </div>
+
+    <div class="panel">
+      <h2>バックアップ <span class="tag">保存がうまくいかない時の保険</span></h2>
+      <div class="foot-note" style="margin-bottom:12px;">
+        自動保存がうまく働かない環境(未公開のアーティファクト・Freeプランなど)でも、ここでデータをファイルに書き出しておけば失わずに済みます。次回はそのファイルを読み込むだけで復元できます。
+      </div>
+      <button class="btn small" id="btn-export">⬇ データを書き出す(.json)</button>
+      <button class="btn small" id="btn-import" style="margin-left:8px; background:var(--gold); color:#fff;">⬆ ファイルから読み込む</button>
+      <input type="file" id="file-import" accept="application/json" style="display:none;">
+      <div class="foot-note" id="backup-status" style="margin-top:8px;"></div>
+    </div>
+
+    <div class="panel">
+      <button class="btn ghost" id="btn-reset-all">すべてのデータをリセット</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ---------- storage helpers ----------
+const LS_PREFIX = 'mbsk_';
+let FS_HANDLE = null;      // connected FileSystemFileHandle (PC/Chrome-Edge only)
+let FS_CACHE = null;       // in-memory mirror of that file's JSON contents
+let PENDING_FS_HANDLE = null; // handle restored from IndexedDB awaiting permission
+
+function idbOpen(){
+  return new Promise((resolve,reject)=>{
+    const req = indexedDB.open('mbsk_fs_db', 1);
+    req.onupgradeneeded = ()=>{ req.result.createObjectStore('kv'); };
+    req.onsuccess = ()=> resolve(req.result);
+    req.onerror = ()=> reject(req.error);
+  });
+}
+async function idbGet(key){
+  const db = await idbOpen();
+  return new Promise((resolve,reject)=>{
+    const tx = db.transaction('kv','readonly');
+    const req = tx.objectStore('kv').get(key);
+    req.onsuccess = ()=> resolve(req.result || null);
+    req.onerror = ()=> reject(req.error);
+  });
+}
+async function idbSet(key, val){
+  const db = await idbOpen();
+  return new Promise((resolve,reject)=>{
+    const tx = db.transaction('kv','readwrite');
+    tx.objectStore('kv').put(val, key);
+    tx.oncomplete = ()=> resolve();
+    tx.onerror = ()=> reject(tx.error);
+  });
+}
+async function idbDel(key){
+  const db = await idbOpen();
+  return new Promise((resolve,reject)=>{
+    const tx = db.transaction('kv','readwrite');
+    tx.objectStore('kv').delete(key);
+    tx.oncomplete = ()=> resolve();
+    tx.onerror = ()=> reject(tx.error);
+  });
+}
+async function writeFsCache(){
+  if(!FS_HANDLE) return;
+  try{
+    const writable = await FS_HANDLE.createWritable();
+    await writable.write(JSON.stringify(FS_CACHE ?? {}, null, 2));
+    await writable.close();
+  }catch(e){ console.error('fs write failed', e); }
+}
+
+async function loadJSON(key, fallback){
+  try{
+    if(window.storage){
+      const r = await window.storage.get(key, false);
+      return r ? JSON.parse(r.value) : fallback;
+    }
+    if(FS_CACHE && (key in FS_CACHE)){
+      return FS_CACHE[key];
+    }
+    const v = localStorage.getItem(LS_PREFIX+key);
+    return v ? JSON.parse(v) : fallback;
+  }catch(e){ return fallback; }
+}
+async function saveJSON(key, value){
+  try{
+    if(window.storage){
+      await window.storage.set(key, JSON.stringify(value), false);
+      return;
+    }
+    localStorage.setItem(LS_PREFIX+key, JSON.stringify(value));
+    if(FS_HANDLE){
+      FS_CACHE = FS_CACHE || {};
+      FS_CACHE[key] = value;
+      await writeFsCache();
+    }
+  }catch(e){ console.error('save failed', key, e); }
+}
+
+async function useFsHandle(handle){
+  FS_HANDLE = handle;
+  try{ await idbSet('fsHandle', handle); }catch(e){}
+  let existing = null;
+  try{
+    const file = await handle.getFile();
+    const text = await file.text();
+    if(text && text.trim()) existing = JSON.parse(text);
+  }catch(e){}
+  if(existing && Object.keys(existing).length){
+    FS_CACHE = existing;
+  }else{
+    FS_CACHE = {
+      shifts: STATE.shifts,
+      actualPayments: STATE.actualPayments,
+      cycleCorrections: STATE.cycleCorrections,
+      holidays: STATE.holidays,
+      jobs: STATE.jobs,
+      activeJobId: STATE.activeJobId,
+      settings: { profile: STATE.settings.profile }
+    };
+    await writeFsCache();
+  }
+  await hydrateStateFromStorage();
+  PENDING_FS_HANDLE = null;
+  renderStorageStatus();
+  renderAll();
+}
+
+async function connectFsFile(){
+  if(!window.showSaveFilePicker){
+    alert('お使いのブラウザ(またはこの画面)はファイル指定保存に対応していません。Chrome/EdgeでこのHTMLファイルを直接開いた状態でお試しください。スマホの場合は下のバックアップ書き出し/読み込みをご利用ください。');
+    return;
+  }
+  try{
+    const handle = await window.showSaveFilePicker({
+      suggestedName: 'salary_tracker_data.json',
+      types: [{ description:'JSON file', accept: {'application/json': ['.json']} }]
+    });
+    await useFsHandle(handle);
+  }catch(e){ /* user cancelled the picker */ }
+}
+
+async function reconnectFsFile(){
+  if(!PENDING_FS_HANDLE) return;
+  try{
+    const perm = await PENDING_FS_HANDLE.requestPermission({mode:'readwrite'});
+    if(perm==='granted'){
+      await useFsHandle(PENDING_FS_HANDLE);
+    }else{
+      alert('アクセスが許可されませんでした。');
+    }
+  }catch(e){
+    alert('接続に失敗しました。お手数ですが「保存先ファイルを選択」からやり直してください。');
+  }
+}
+
+async function disconnectFsFile(){
+  FS_HANDLE = null;
+  FS_CACHE = null;
+  try{ await idbDel('fsHandle'); }catch(e){}
+  renderStorageStatus();
+}
+
+async function tryAutoRestoreFsHandle(){
+  try{
+    const handle = await idbGet('fsHandle');
+    if(!handle) return;
+    const perm = await handle.queryPermission({mode:'readwrite'});
+    if(perm === 'granted'){
+      await useFsHandle(handle);
+    }else{
+      PENDING_FS_HANDLE = handle;
+    }
+  }catch(e){ /* ignore, falls back to localStorage */ }
+}
+
+function renderStorageStatus(){
+  const tag = document.getElementById('storage-mode-tag');
+  const note = document.getElementById('storage-status-note');
+  const btnConnect = document.getElementById('btn-connect-fs');
+  const btnReconnect = document.getElementById('btn-reconnect-fs');
+  const btnDisconnect = document.getElementById('btn-disconnect-fs');
+  if(!tag) return;
+  if(window.storage){
+    tag.textContent = 'Claudeストレージ';
+    note.textContent = '現在はClaudeのアーティファクトストレージ(アカウント紐付け)を使用しています。自分で保存先ファイルを指定したい場合は、このHTMLファイルをダウンロードしてChrome/Edgeで直接開いてください。';
+    btnConnect.style.display='none'; btnReconnect.style.display='none'; btnDisconnect.style.display='none';
+    return;
+  }
+  if(FS_HANDLE){
+    tag.textContent = '指定ファイルと同期中';
+    note.textContent = `「${FS_HANDLE.name || '指定したファイル'}」に自動保存されています。そのファイルをDropbox/Google Drive等の同期フォルダに置けば、他のPCからも同じファイルを指定してつなげられます。`;
+    btnConnect.style.display='none'; btnReconnect.style.display='none'; btnDisconnect.style.display='inline-block';
+  }else if(PENDING_FS_HANDLE){
+    tag.textContent = '再接続が必要';
+    note.textContent = '前回指定したファイルへのアクセス許可が切れています。下のボタンから再接続してください。';
+    btnConnect.style.display='none'; btnReconnect.style.display='inline-block'; btnDisconnect.style.display='none';
+  }else{
+    tag.textContent = 'このブラウザ内';
+    note.textContent = window.showSaveFilePicker
+      ? 'このブラウザ内(localStorage)に自動保存されています。特定のファイルに保存したい場合は下のボタンからどうぞ。'
+      : 'このブラウザ内(localStorage)に自動保存されています。このブラウザはファイル指定保存に対応していません(スマホ等)。下の「バックアップ」でこまめに書き出しておくと安心です。';
+    btnConnect.style.display='inline-block'; btnReconnect.style.display='none'; btnDisconnect.style.display='none';
+  }
+}
+
+// ---------- default holiday list (内閣府 公式データ 2026-2027) ----------
+const DEFAULT_HOLIDAYS = [
+  ["2026-01-01","元日"],["2026-01-12","成人の日"],["2026-02-11","建国記念の日"],
+  ["2026-02-23","天皇誕生日"],["2026-03-20","春分の日"],["2026-04-29","昭和の日"],
+  ["2026-05-03","憲法記念日"],["2026-05-04","みどりの日"],["2026-05-05","こどもの日"],
+  ["2026-05-06","休日"],["2026-07-20","海の日"],["2026-08-11","山の日"],
+  ["2026-09-21","敬老の日"],["2026-09-22","国民の休日"],["2026-09-23","秋分の日"],
+  ["2026-10-12","スポーツの日"],["2026-11-03","文化の日"],["2026-11-23","勤労感謝の日"],
+  ["2027-01-01","元日"],["2027-01-11","成人の日"],["2027-02-11","建国記念の日"],
+  ["2027-02-23","天皇誕生日"],["2027-03-21","春分の日"],["2027-03-22","休日"],
+  ["2027-04-29","昭和の日"],["2027-05-03","憲法記念日"],["2027-05-04","みどりの日"],
+  ["2027-05-05","こどもの日"],["2027-07-19","海の日"],["2027-08-11","山の日"],
+  ["2027-09-20","敬老の日"],["2027-09-23","秋分の日"],["2027-10-11","スポーツの日"],
+  ["2027-11-03","文化の日"],["2027-11-23","勤労感謝の日"]
+];
+
+const DEFAULT_JOBS = [
+  {
+    id: 'job-default',
+    name: 'バイト先1',
+    baseWage: 1520,
+    wageBands: [
+      { start:'06:00', end:'09:00', addon:280 },
+      { start:'09:00', end:'17:00', addon:0 },
+      { start:'17:00', end:'22:00', addon:50 },
+      { start:'22:00', end:'24:00', addon:380 }
+    ],
+    sunAdd: 50,
+    tripFare: 500,
+    passFare: 12000,
+    passThreshold: 15,
+    commuteTaxExempt: true,
+    cutoffDay: 20,
+    paymentMonthsAfter: 1,
+    paymentDay: 5,
+    holidayAdjustment: 'before'
+  }
+];
+
+const DEFAULT_SETTINGS = {
+  profile: {
+    isStudent: true,
+    usesGakuseiTokurei: true,
+    dependentTax: true,
+    dependentSocialInsurance: true,
+    dependentRelationship: 'student_child' // 'student_child' | 'spouse' | 'other'
+  }
+};
+
+let STATE = {
+  shifts: [],       // {id, jobId, date, start, end, breakMin}
+  holidays: {},      // {'YYYY-MM-DD': name}
+  actualPayments: [], // {id, jobId, month:'YYYY-MM', taxable, commute, note}
+  cycleCorrections: {}, // { [jobId]: { 'YYYY-MM': {wage:number|null, commute:number|null} } }
+  jobs: [],          // array of job config objects
+  activeJobId: null,
+  settings: JSON.parse(JSON.stringify(DEFAULT_SETTINGS)),
+  activeTab: 'entry',
+  currentCycleKey: null
+};
+
+// ---------- date/time utils ----------
+function pad(n){ return n<10 ? '0'+n : ''+n; }
+function toKey(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+function parseYMD(s){ const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); }
+function isSunday(d){ return d.getDay()===0; }
+function isHoliday(dateKey){ return !!STATE.holidays[dateKey]; }
+function dayType(dateKey){
+  const d = parseYMD(dateKey);
+  return (isSunday(d) || isHoliday(dateKey)) ? 'holiday' : 'weekday';
+}
+function timeToHours(t){ const [h,m]=t.split(':').map(Number); return h + m/60; }
+
+// 15-minute increment time options, 00:00 - 24:00 inclusive
+const TIME_OPTIONS = (()=>{
+  const opts = [];
+  for(let h=0; h<24; h++){
+    for(let m=0; m<60; m+=15){
+      opts.push(pad(h)+':'+pad(m));
+    }
+  }
+  opts.push('24:00');
+  return opts;
+})();
+function populateTimeSelect(sel, defaultVal){
+  sel.innerHTML = TIME_OPTIONS.map(t=>`<option value="${t}" ${t===defaultVal?'selected':''}>${t}</option>`).join('');
+}
+
+// hour (1-hour increments) / minute (5-minute increments) independent selects, used for shift entry
+function populateHourSelect(sel, defaultH){
+  const opts = [];
+  for(let h=0; h<=24; h++) opts.push(pad(h));
+  sel.innerHTML = opts.map(h=>`<option value="${h}" ${h===defaultH?'selected':''}>${h}</option>`).join('');
+}
+function populateMinuteSelect(sel, defaultM){
+  const opts = [];
+  for(let m=0; m<60; m+=5) opts.push(pad(m));
+  sel.innerHTML = opts.map(m=>`<option value="${m}" ${m===defaultM?'selected':''}>${m}</option>`).join('');
+}
+function getStartValue(){ return document.getElementById('in-start-h').value+':'+document.getElementById('in-start-m').value; }
+function getEndValue(){ return document.getElementById('in-end-h').value+':'+document.getElementById('in-end-m').value; }
+function setStartValue(v){ const [h,m]=v.split(':'); document.getElementById('in-start-h').value=h; document.getElementById('in-start-m').value=m; }
+function setEndValue(v){ const [h,m]=v.split(':'); document.getElementById('in-end-h').value=h; document.getElementById('in-end-m').value=m; }
+
+function getJob(jobId){
+  return STATE.jobs.find(j=>j.id===jobId) || STATE.jobs[0] || null;
+}
+
+// wage bands are user-defined per job and can be freely added/edited/removed
+function rateForHour(hour, type, job){
+  const band = job.wageBands.find(b=>{
+    const bs = timeToHours(b.start), be = timeToHours(b.end);
+    return hour>=bs && hour<be;
+  });
+  const rate = job.baseWage + (band ? (Number(band.addon)||0) : 0);
+  return type==='holiday' ? rate + job.sunAdd : rate;
+}
+function bandBoundariesInRange(start, end, job){
+  const points = new Set();
+  job.wageBands.forEach(b=>{
+    const bs = timeToHours(b.start), be = timeToHours(b.end);
+    if(bs>start && bs<end) points.add(bs);
+    if(be>start && be<end) points.add(be);
+  });
+  return [...points];
+}
+
+function calcShiftWage(shift){
+  const job = getJob(shift.jobId);
+  const type = dayType(shift.date);
+  let start = timeToHours(shift.start);
+  let end = timeToHours(shift.end);
+  if(end <= start) end += 24; // overnight guard (not expected but safe)
+  let breakHours = (shift.breakMin||0)/60;
+  // build boundary list clipped to [start,end], following the job's own wage-band edges
+  let points = [start, ...(job?bandBoundariesInRange(start,end,job):[]), end];
+  points = [...new Set(points)].sort((a,b)=>a-b);
+  let totalPay = 0, totalHours = 0;
+  for(let i=0;i<points.length-1;i++){
+    const segStart = points[i], segEnd = points[i+1];
+    const dur = segEnd - segStart;
+    const rate = job ? rateForHour(segStart % 24, type, job) : 0;
+    totalPay += rate * dur;
+    totalHours += dur;
+  }
+  // subtract break proportionally at the (weighted) average rate
+  if(breakHours>0 && totalHours>0){
+    const avgRate = totalPay/totalHours;
+    totalPay -= avgRate*breakHours;
+    totalHours -= breakHours;
+  }
+  return { pay: Math.round(totalPay), hours: totalHours, type };
+}
+
+// returns the amount actually used in totals: the manual correction if the
+// person recorded one, otherwise the computed/scheduled wage.
+function effectivePay(shift){
+  return (shift.actualPay !== undefined && shift.actualPay !== null && shift.actualPay !== '')
+    ? Number(shift.actualPay)
+    : calcShiftWage(shift).pay;
+}
+
+// ---------- pay cycle utils: cutoff day / payment day are configurable per job ----------
+// day=0 means "月末" (last day of the month); otherwise clamped to the month's actual length
+function dayOfMonthClamped(y, mIdx, day){
+  if(day===0) return new Date(y, mIdx+1, 0);
+  const dim = new Date(y, mIdx+1, 0).getDate();
+  return new Date(y, mIdx, Math.min(day, dim));
+}
+// cycle key = 'YYYY-MM' representing the month the cutoff (period-end) falls in
+function cycleKeyForDate(d, job){
+  const y = d.getFullYear(), m = d.getMonth();
+  const cutoff = dayOfMonthClamped(y, m, job.cutoffDay);
+  if(d <= cutoff){
+    return y+'-'+pad(m+1);
+  }else{
+    const next = new Date(y, m+1, 1);
+    return next.getFullYear()+'-'+pad(next.getMonth()+1);
+  }
+}
+function cycleRange(key, job){
+  const [y,m] = key.split('-').map(Number);
+  const mIdx = m-1;
+  const end = dayOfMonthClamped(y, mIdx, job.cutoffDay);
+  const prev = new Date(y, mIdx-1, 1);
+  const prevCutoff = dayOfMonthClamped(prev.getFullYear(), prev.getMonth(), job.cutoffDay);
+  const start = new Date(prevCutoff.getFullYear(), prevCutoff.getMonth(), prevCutoff.getDate()+1);
+  return {start,end};
+}
+function cyclePaymentDate(key, job){
+  const [y,m] = key.split('-').map(Number);
+  const mIdx = m-1;
+  const payMonth = new Date(y, mIdx + (job.paymentMonthsAfter||0), 1);
+  let payDate = dayOfMonthClamped(payMonth.getFullYear(), payMonth.getMonth(), job.paymentDay);
+  const adj = job.holidayAdjustment || 'before';
+  if(adj !== 'none'){
+    const dir = adj==='after' ? 1 : -1;
+    while(isSunday(payDate) || payDate.getDay()===6 || isHoliday(toKey(payDate))){
+      payDate = new Date(payDate.getFullYear(), payDate.getMonth(), payDate.getDate()+dir);
+    }
+  }
+  return payDate;
+}
+function cycleLabel(key, job){
+  const {start,end} = cycleRange(key, job);
+  return `${start.getFullYear()}/${start.getMonth()+1}/${start.getDate()} 〜 ${end.getFullYear()}/${end.getMonth()+1}/${end.getDate()}`;
+}
+function dayOptionsHTML(selected){
+  let opts = `<option value="0" ${selected===0?'selected':''}>月末</option>`;
+  for(let d=1; d<=31; d++){
+    opts += `<option value="${d}" ${selected===d?'selected':''}>${d}日</option>`;
+  }
+  return opts;
+}
+
+
+// ---------- rendering ----------
+function fmtYen(n){ return '¥' + Math.round(n).toLocaleString(); }
+
+function renderTabs(){
+  document.querySelectorAll('#tabs button').forEach(b=>{
+    b.classList.toggle('active', b.dataset.tab===STATE.activeTab);
+  });
+  ['entry','actual','cycle','annual','settings'].forEach(t=>{
+    document.getElementById('page-'+t).style.display = (t===STATE.activeTab)?'block':'none';
+  });
+}
+
+function renderShiftPreview(){
+  const date = document.getElementById('in-date').value;
+  const start = getStartValue();
+  const end = getEndValue();
+  const brk = Number(document.getElementById('in-break').value)||0;
+  const note = document.getElementById('preview-note');
+  if(!date || !start || !end){ note.textContent=''; return; }
+  const {pay, hours, type} = calcShiftWage({date,start,end,breakMin:brk,jobId:STATE.activeJobId});
+  note.innerHTML = `${type==='holiday'?'🔴 日曜/祝日':'⚪ 平日'} 扱い ・ 実働 ${hours.toFixed(2)}時間 ・ 見込み日給 <b>${fmtYen(pay)}</b>`;
+}
+
+function renderShiftTable(){
+  const tbody = document.getElementById('shift-table-body');
+  const empty = document.getElementById('shift-empty');
+  const filtered = STATE.shifts.filter(s=>s.jobId===STATE.activeJobId);
+  const sorted = [...filtered].sort((a,b)=> a.date<b.date?1:-1);
+  document.getElementById('shift-count-tag').textContent = filtered.length+'件';
+  if(sorted.length===0){ tbody.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display='none';
+  const job = getJob(STATE.activeJobId);
+  tbody.innerHTML = sorted.map(s=>{
+    const {pay,type} = calcShiftWage(s);
+    const d = parseYMD(s.date);
+    const wd = ['日','月','火','水','木','金','土'][d.getDay()];
+    return `<tr>
+      <td class="num">${s.date}</td>
+      <td>${wd}曜${type==='holiday'?' <span style="color:var(--danger)">(祝/日)</span>':''}</td>
+      <td class="num">${s.start}-${s.end}</td>
+      <td class="num">${fmtYen(pay)}</td>
+      <td class="num">${fmtYen(job?job.tripFare:0)}</td>
+      <td><button class="btn ghost" data-del="${s.id}">削除</button></td>
+    </tr>`;
+  }).join('');
+  tbody.querySelectorAll('[data-del]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      STATE.shifts = STATE.shifts.filter(x=>x.id !== btn.dataset.del);
+      await saveJSON('shifts', STATE.shifts);
+      renderAll();
+    });
+  });
+}
+
+function cycleComputed(key, jobId){
+  const job = getJob(jobId);
+  const {start,end} = cycleRange(key, job);
+  const inCycle = STATE.shifts.filter(s=>{
+    if(s.jobId !== jobId) return false;
+    const d = parseYMD(s.date);
+    return d>=start && d<=end;
+  }).sort((a,b)=> a.date<b.date?-1:1);
+  const workDays = new Set(inCycle.map(s=>s.date)).size;
+  const wage = inCycle.reduce((sum,s)=> sum + calcShiftWage(s).pay, 0);
+  const usePass = job && workDays >= job.passThreshold;
+  const commute = job ? (usePass ? job.passFare : workDays * job.tripFare) : 0;
+  return { inCycle, workDays, wage, commute, usePass };
+}
+function cycleEffective(key, jobId){
+  const computed = cycleComputed(key, jobId);
+  const corr = (STATE.cycleCorrections[jobId] && STATE.cycleCorrections[jobId][key]) || {};
+  const wage = (corr.wage !== undefined && corr.wage !== null && corr.wage !== '') ? Number(corr.wage) : computed.wage;
+  const commute = (corr.commute !== undefined && corr.commute !== null && corr.commute !== '') ? Number(corr.commute) : computed.commute;
+  return { ...computed, wage, commute, wageCorrected: wage !== computed.wage, commuteCorrected: commute !== computed.commute };
+}
+
+function allCycleKeys(jobId){
+  const job = getJob(jobId);
+  const keys = new Set();
+  STATE.shifts.filter(s=>s.jobId===jobId).forEach(s=> keys.add(cycleKeyForDate(parseYMD(s.date), job)));
+  keys.add(cycleKeyForDate(new Date(), job)); // ensure current cycle always available
+  return [...keys].sort();
+}
+
+function renderCycleSelect(){
+  const sel = document.getElementById('cycle-select');
+  const job = getJob(STATE.activeJobId);
+  const keys = allCycleKeys(STATE.activeJobId);
+  if(!STATE.currentCycleKey || !keys.includes(STATE.currentCycleKey)){
+    STATE.currentCycleKey = keys[keys.length-1];
+  }
+  sel.innerHTML = keys.map(k=>`<option value="${k}" ${k===STATE.currentCycleKey?'selected':''}>${cycleLabel(k, job)}</option>`).join('');
+}
+
+function renderCyclePage(){
+  renderCycleSelect();
+  const key = STATE.currentCycleKey;
+  const jobId = STATE.activeJobId;
+  if(!key || !jobId) return;
+  const computed = cycleComputed(key, jobId);
+  const eff = cycleEffective(key, jobId);
+  const corr = (STATE.cycleCorrections[jobId] && STATE.cycleCorrections[jobId][key]) || {};
+
+  document.getElementById('c-days').textContent = computed.workDays + '日';
+  document.getElementById('c-wage-computed').textContent = fmtYen(computed.wage);
+  document.getElementById('c-commute-computed').textContent = fmtYen(computed.commute);
+  const job = getJob(jobId);
+  document.getElementById('c-commute-note').textContent = computed.usePass
+    ? `この期間は${computed.workDays}日勤務(${job.passThreshold}日以上)のため、定期券代(${fmtYen(job.passFare)})で予定計算しています。`
+    : `この期間は${computed.workDays}日勤務(${job.passThreshold}日未満)のため、往復運賃×勤務日数で予定計算しています。`;
+
+  document.getElementById('c-wage-correction').value = (corr.wage ?? '');
+  document.getElementById('c-commute-correction').value = (corr.commute ?? '');
+  document.getElementById('c-wage-correction').placeholder = `予定通り(${fmtYen(computed.wage)})`;
+  document.getElementById('c-commute-correction').placeholder = `予定通り(${fmtYen(computed.commute)})`;
+
+  document.getElementById('c-wage').innerHTML = fmtYen(eff.wage) + (eff.wageCorrected ? ' <span style="color:var(--gold); font-size:11px;">(訂正済)</span>' : '');
+  document.getElementById('c-commute').innerHTML = fmtYen(eff.commute) + (eff.commuteCorrected ? ' <span style="color:var(--gold); font-size:11px;">(訂正済)</span>' : '');
+  document.getElementById('c-total').textContent = fmtYen(eff.wage + eff.commute);
+
+  const payDate = cyclePaymentDate(key, job);
+  const paymentMonthLabel = job.paymentMonthsAfter===0 ? '当月' : job.paymentMonthsAfter===1 ? '翌月' : `${job.paymentMonthsAfter}ヶ月後`;
+  const cutoffLabel = job.cutoffDay===0 ? '月末' : `${job.cutoffDay}日`;
+  const paymentDayLabel = job.paymentDay===0 ? '月末' : `${job.paymentDay}日`;
+  const adjLabel = job.holidayAdjustment==='after' ? '休日祝日は翌営業日' : job.holidayAdjustment==='none' ? '休日祝日でも調整なし' : '休日祝日は前営業日';
+  document.getElementById('c-payday').textContent =
+    `支払日: ${payDate.getFullYear()}/${payDate.getMonth()+1}/${payDate.getDate()} (${cutoffLabel}締め・${paymentMonthLabel}${paymentDayLabel}払い / ${adjLabel})`;
+
+  const tbody = document.getElementById('cycle-table-body');
+  const empty = document.getElementById('cycle-empty');
+  if(computed.inCycle.length===0){ tbody.innerHTML=''; empty.style.display='block'; }
+  else{
+    empty.style.display='none';
+    tbody.innerHTML = computed.inCycle.map(s=>{
+      const {pay,type} = calcShiftWage(s);
+      const d = parseYMD(s.date);
+      const wd = ['日','月','火','水','木','金','土'][d.getDay()];
+      return `<tr><td class="num">${s.date}</td><td>${wd}曜${type==='holiday'?' (祝/日)':''}</td><td class="num">${s.start}-${s.end}</td><td class="num">${fmtYen(pay)}</td></tr>`;
+    }).join('');
+  }
+}
+
+function renderActualPage(){
+  const tbody = document.getElementById('actual-table-body');
+  const empty = document.getElementById('actual-empty');
+  const filtered = STATE.actualPayments.filter(p=>p.jobId===STATE.activeJobId);
+  const sorted = [...filtered].sort((a,b)=> a.month<b.month?1:-1);
+  document.getElementById('actual-count-tag').textContent = filtered.length+'件';
+  if(sorted.length===0){ tbody.innerHTML=''; empty.style.display='block'; }
+  else{
+    empty.style.display='none';
+    tbody.innerHTML = sorted.map(p=>`<tr>
+      <td class="num">${p.month}</td>
+      <td class="num">${fmtYen(p.taxable)}</td>
+      <td class="num">${fmtYen(p.commute)}</td>
+      <td class="num">${fmtYen(p.taxable+p.commute)}</td>
+      <td>${p.note||''}</td>
+      <td><button class="btn ghost" data-delap="${p.id}">削除</button></td>
+    </tr>`).join('');
+    tbody.querySelectorAll('[data-delap]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        STATE.actualPayments = STATE.actualPayments.filter(x=>x.id!==btn.dataset.delap);
+        await saveJSON('actualPayments', STATE.actualPayments);
+        renderAll();
+      });
+    });
+  }
+  const totalTaxable = filtered.reduce((s,p)=>s+p.taxable,0);
+  const totalCommute = filtered.reduce((s,p)=>s+p.commute,0);
+  document.getElementById('ap-total-taxable').textContent = fmtYen(totalTaxable);
+  document.getElementById('ap-total-commute').textContent = fmtYen(totalCommute);
+}
+
+function generateWalls(){
+  const p = STATE.settings.profile;
+  const walls = [];
+  const VERIFIED = '2026-07-10'; // last time these figures/sources were checked against official pages
+
+  walls.push({ key:'juuminzei', name:'住民税ライン', amount:1100000, basis:'wage',
+    note:'超えると住民税がかかり始めます。目安: 超えた直後は均等割の約5,000円のみ。その後は超過額のおおむね10%が所得割として上乗せ(例: 20万円超過で追加約2万円)',
+    verifiedDate: VERIFIED, sourceName:'総務省(個人住民税)', sourceUrl:'https://www.soumu.go.jp/main_sosiki/jichi_zeisei/czaisei/czaisei_seido/149767_03.html' });
+
+  if(p.dependentSocialInsurance){
+    const note106 = p.isStudent
+      ? '週20時間以上勤務等の条件を満たすと社保加入義務(目安)。<b>学生は原則この加入義務の対象外</b>なので在学中はあまり気にしなくて大丈夫。万一対象になった場合は月収の約15%(年収106万円なら年間15〜16万円程度)の保険料負担。なお2026年10月に「月額8.8万円以上」の賃金要件が撤廃予定で、以後は週20時間要件などが中心になります'
+      : '週20時間以上勤務等の条件を満たすと社保加入義務が生じます。目安: 月収の約15%(年収106万円なら年間15〜16万円程度)の保険料負担。なお2026年10月に「月額8.8万円以上」の賃金要件が撤廃予定で、以後は週20時間要件などが中心になります';
+    walls.push({ key:'shakaihoken20h', name:'社会保険(週20時間水準・目安)', amount:1060000, basis:'wage', note: note106,
+      verifiedDate: VERIFIED, sourceName:'日本年金機構(短時間労働者の適用拡大)', sourceUrl:'https://www.nenkin.go.jp/tokusetsu/tekiyokakudai_kojin.html' });
+  }
+
+  if(p.dependentTax){
+    const rel = p.dependentRelationship || 'student_child';
+    if(rel==='spouse'){
+      walls.push({ key:'haigusha', name:'配偶者控除・配偶者特別控除', amount:1690000, basis:'wage',
+        note:'136万円までは配偶者控除で満額38万円。136万円を超えても169万円までは配偶者特別控除で引き続き満額38万円が維持され、207万円に向けて段階的に減っていきます(207万円超でゼロ)。ブラケットが細かいため、正確な金額は国税庁の早見表で確認してください。目安: 満額の38万円控除がゼロになった場合、配偶者の税率次第で所得税・住民税合わせておおむね年間4〜8万円程度の配偶者側の税負担増',
+        verifiedDate: VERIFIED, sourceName:'国税庁 No.1195 配偶者特別控除', sourceUrl:'https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1195.htm' });
+    }else if(rel==='other'){
+      walls.push({ key:'fuyoukoujo', name:'扶養控除(通常)', amount:1360000, basis:'wage',
+        note:'136万円を1円でも超えると扶養控除(38万円、16歳以上の子の場合等)が丸ごと無くなる「崖」があります(19〜22歳の学生年代のような緩和措置はありません)。令和8年分(2026年分)から基準額が123万円→136万円に引き上げられています。目安: 扶養している方の税率次第で所得税・住民税合わせておおむね年間4〜8万円程度の税負担増',
+        verifiedDate: VERIFIED, sourceName:'国税庁 No.1180 扶養控除', sourceUrl:'https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1180.htm' });
+    }else{
+      walls.push({ key:'tokutei', name:'特定扶養控除(19-22歳の学生年代)', amount:1590000, basis:'wage',
+        note:'136万円までは通常の扶養控除と同じ63万円。136万円を超えても159万円までは特定親族特別控除で引き続き満額63万円が維持され、197万円に向けて段階的に減っていきます(197万円超でゼロ)。令和7年に導入された、崖を無くすための緩和措置で、令和8年分でさらに基準額が引き上げられています。目安: 満額の63万円控除が丸ごと無くなった場合、親の税率次第で所得税・住民税合わせておおむね年間6〜13万円程度の親の税負担増',
+        verifiedDate: VERIFIED, sourceName:'国税庁 No.1177 特定親族特別控除', sourceUrl:'https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1177.htm' });
+    }
+  }
+
+  if(p.dependentSocialInsurance){
+    let pensionNote;
+    if(p.isStudent){
+      pensionNote = p.usesGakuseiTokurei
+        ? '学生納付特例を利用中とのことなので、在学中は猶予され実質0円(追納は任意)'
+        : '学生納付特例は未利用とのこと。20歳以上は納付義務があり年間約21万円(未利用ならまず学生納付特例の申請がおすすめ)';
+    }else{
+      pensionNote = '20歳以上は国民年金の納付義務があり年間約21万円(低所得なら免除制度あり)';
+    }
+    // 2025年10月の改正で、19〜22歳の学生年代(配偶者を除く)は130万円ではなく150万円が収入要件になった
+    const rel = p.dependentRelationship || 'student_child';
+    const isStudentAgeException = (rel === 'student_child');
+    const shakaihoken130Amount = isStudentAgeException ? 1500000 : 1300000;
+    const ageNote = isStudentAgeException
+      ? '<b>2025年10月の改正で、19〜22歳の学生年代は130万円ではなく150万円が収入要件になっています。</b>'
+      : '';
+    walls.push({ key:'shakaihoken130', name:'社会保険上の扶養', amount:shakaihoken130Amount, basis:'wagePlusCommute',
+      note:`${ageNote}超えると扶養している方の健康保険の扶養(医療保険)から外れ、自分で国民健康保険(または勤務先の社保)に加入。※この壁だけは非課税の通勤手当も収入に含めて判定。目安: 国民健康保険料は前年所得ベースのため超えた年はそこまで高くならないことが多い。<b>国民年金は130万円の壁とは別の話</b>: ${pensionNote}`,
+      verifiedDate: VERIFIED, sourceName:'日本年金機構(被扶養者の収入要件)', sourceUrl:'https://www.nenkin.go.jp/service/kounen/tekiyo/hihokensha1/20141202.html' });
+  }
+
+  walls.push({ key:'shotokuzei', name:'所得税(自分)', amount:1780000, basis:'wage',
+    note:'2026年分からここまでは自分の所得税がかかりません(2026年中は年末調整で精算)。目安: 超過分におおむね5.105%(所得税5%+復興特別所得税)が課税(例: 20万円超過で約1万円)',
+    verifiedDate: VERIFIED, sourceName:'国税庁 No.1100 所得控除のあらまし', sourceUrl:'https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1100.htm' });
+
+  return walls;
+}
+
+function renderAnnualPage(){
+  const year = new Date().getFullYear();
+  document.getElementById('year-tag').textContent = year+'年';
+
+  // aggregate across ALL jobs, by actual payment year, using cycle-level corrections where present
+  let shiftTotal = 0;
+  let commuteTotal = 0;       // all commute, regardless of exempt flag (used for the 130万 wall)
+  let commuteTaxableTotal = 0; // only commute from jobs marked as NOT tax-exempt
+  const perJobTotals = [];
+  STATE.jobs.forEach(job=>{
+    let jobWage = 0, jobCommute = 0;
+    allCycleKeys(job.id).forEach(key=>{
+      const eff = cycleEffective(key, job.id);
+      if(eff.inCycle.length===0) return;
+      const payYear = cyclePaymentDate(key, job).getFullYear();
+      if(payYear===year){ jobWage += eff.wage; jobCommute += eff.commute; }
+    });
+    shiftTotal += jobWage;
+    commuteTotal += jobCommute;
+    if(!job.commuteTaxExempt) commuteTaxableTotal += jobCommute;
+    if(jobWage>0 || jobCommute>0) perJobTotals.push({ name: job.name, wage: jobWage, commute: jobCommute });
+  });
+
+  const yearActual = STATE.actualPayments.filter(p=> Number(p.month.split('-')[0])===year);
+  const actualTotal = yearActual.reduce((sum,p)=> sum+p.taxable, 0);
+  const actualCommuteTotal = yearActual.reduce((sum,p)=> sum+(p.commute||0), 0);
+  const total = shiftTotal + actualTotal;
+  const totalWithCommute = total + commuteTotal + actualCommuteTotal;
+
+  const now = new Date();
+  const startOfYear = new Date(year,0,1);
+  const daysElapsed = Math.max(1, Math.round((now-startOfYear)/86400000)+1);
+  const monthsElapsed = Math.max(1, daysElapsed/30.44);
+  const pace = total/monthsElapsed;
+  const projection = pace*12;
+
+  document.getElementById('a-total').textContent = fmtYen(total);
+  document.getElementById('a-pace').textContent = fmtYen(pace)+' /月';
+  document.getElementById('a-projection').textContent = fmtYen(projection);
+  const breakdownEl = document.getElementById('a-breakdown');
+  if(breakdownEl){
+    const jobBreakdown = perJobTotals.map(j=>`${j.name} ${fmtYen(j.wage)}`).join(' + ');
+    breakdownEl.innerHTML = `内訳(実際の支払日ベース・全バイト先合算): ${jobBreakdown || 'シフト分 '+fmtYen(shiftTotal)} ＋ 受取実績(手入力)分 ${fmtYen(actualTotal)}`;
+  }
+
+  const commutePaceAnnual = (commuteTotal+actualCommuteTotal)/monthsElapsed*12;
+  const commuteTaxablePaceAnnual = commuteTaxableTotal/monthsElapsed*12;
+  const taxableBasisTotal = total + commuteTaxableTotal;
+  const taxableBasisProjection = projection + commuteTaxablePaceAnnual;
+
+  const commuteNoteEl = document.getElementById('a-commute-note');
+  if(commuteNoteEl){
+    commuteNoteEl.textContent = commuteTaxableTotal>0
+      ? '一部のバイト先で交通費が「課税対象」に設定されているため、その分は住民税・所得税などの壁でも通勤費を含めて判定しています(「社会保険上の扶養」の壁は設定に関わらず常に通勤費を含めます)。'
+      : '下の合計・ペースは通勤費(非課税)を除いた課税対象の金額です。ただし「社会保険上の扶養(130万円)」の壁だけは、通勤費も収入に含めて判定するため、そのバーだけ交通費込みの金額で表示しています。';
+  }
+
+  const walls = generateWalls();
+  const barsEl = document.getElementById('wall-bars');
+  if(walls.length===0){
+    barsEl.innerHTML = '<div class="empty">プロフィール設定により、現在該当する壁はありません。</div>';
+  }else{
+    barsEl.innerHTML = walls.map(w=>{
+      const base = w.basis==='wagePlusCommute' ? totalWithCommute : taxableBasisTotal;
+      const baseProjection = w.basis==='wagePlusCommute' ? (projection+commutePaceAnnual) : taxableBasisProjection;
+      const pct = Math.min(100, (base/w.amount)*100);
+      const projPct = Math.min(100,(baseProjection/w.amount)*100);
+      let cls = 'bar-fill';
+      if(pct>=100) cls += ' danger'; else if(projPct>=100) cls += ' warn';
+      const verifiedLabel = w.verifiedDate ? new Date(w.verifiedDate).toLocaleDateString('ja-JP') : '';
+      return `<div class="bar-wrap">
+        <div class="bar-head"><span class="name">${w.name} <span style="color:var(--ink-soft); font-weight:400;">(${(w.amount/10000).toFixed(0)}万円)</span></span>
+        <span class="nums">${fmtYen(base)} / ${fmtYen(w.amount)}</span></div>
+        <div class="bar-track"><div class="${cls}" style="width:${pct}%"></div></div>
+        <div class="bar-note">${w.note}${projPct>=100 && pct<100 ? ' ・ このペースだと年内に超える見込みです' : ''}</div>
+        ${w.sourceUrl ? `<div class="bar-note" style="margin-top:3px;">最終確認: ${verifiedLabel} ・ <a href="${w.sourceUrl}" target="_blank" rel="noopener" style="color:var(--teal); font-weight:700;">${w.sourceName || '公式情報を確認する'} ↗</a></div>` : ''}
+      </div>`;
+    }).join('');
+  }
+}
+
+function renderSettingsPage(){
+  document.getElementById('s-is-student').value = String(STATE.settings.profile.isStudent);
+  document.getElementById('s-gakusei-tokurei').value = String(STATE.settings.profile.usesGakuseiTokurei);
+  document.getElementById('s-dependent-tax').value = String(STATE.settings.profile.dependentTax);
+  document.getElementById('s-dependent-relationship').value = STATE.settings.profile.dependentRelationship || 'student_child';
+  document.getElementById('s-dependent-shaho').value = String(STATE.settings.profile.dependentSocialInsurance);
+  document.getElementById('s-gakusei-tokurei-wrap').style.display = STATE.settings.profile.isStudent ? '' : 'none';
+  document.getElementById('s-dependent-relationship-wrap').style.display = STATE.settings.profile.dependentTax ? '' : 'none';
+
+  renderJobsList();
+
+  const tbody = document.getElementById('holiday-table-body');
+  const entries = Object.entries(STATE.holidays).sort();
+  tbody.innerHTML = entries.map(([date,name])=>
+    `<tr><td class="num">${date}</td><td>${name}</td><td><button class="btn ghost" data-delh="${date}">削除</button></td></tr>`
+  ).join('');
+  tbody.querySelectorAll('[data-delh]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      delete STATE.holidays[btn.dataset.delh];
+      await saveJSON('holidays', STATE.holidays);
+      renderAll();
+    });
+  });
+}
+
+function renderJobsList(){
+  const container = document.getElementById('jobs-list');
+  if(!container) return;
+  document.getElementById('jobs-count-tag').textContent = STATE.jobs.length+'件';
+  container.innerHTML = STATE.jobs.map((job,jIdx)=>`
+    <div class="panel" style="background:#FBFDFC; margin-bottom:14px;">
+      <div class="grid" style="margin-bottom:10px;">
+        <div class="row-field"><label>バイト先名</label><input type="text" data-job-field="name" data-job-idx="${jIdx}" value="${job.name}"></div>
+        <div class="row-field"><label>基本給(円)</label><input type="number" data-job-field="baseWage" data-job-idx="${jIdx}" value="${job.baseWage}"></div>
+        <div class="row-field"><label>日祝の加算額(円)</label><input type="number" data-job-field="sunAdd" data-job-idx="${jIdx}" value="${job.sunAdd}"></div>
+      </div>
+      <div class="foot-note" style="margin-bottom:8px;">時間帯ごとの、基本給からの加算額</div>
+      <div class="job-bands-list" data-job-idx="${jIdx}"></div>
+      <button class="btn small" data-add-band-job="${jIdx}" type="button" style="margin-top:4px;">＋ 時間帯を追加</button>
+      <div class="divider"></div>
+      <div class="grid">
+        <div class="row-field"><label>1回の勤務あたり往復運賃(円)</label><input type="number" data-job-field="tripFare" data-job-idx="${jIdx}" value="${job.tripFare}"></div>
+        <div class="row-field"><label>1ヶ月定期券代(円)</label><input type="number" data-job-field="passFare" data-job-idx="${jIdx}" value="${job.passFare}"></div>
+        <div class="row-field"><label>定期券に切替える勤務日数(以上)</label><input type="number" data-job-field="passThreshold" data-job-idx="${jIdx}" value="${job.passThreshold}"></div>
+        <div class="row-field"><label>交通費は非課税扱い?</label>
+          <select data-job-field="commuteTaxExempt" data-job-idx="${jIdx}">
+            <option value="true" ${job.commuteTaxExempt?'selected':''}>はい</option>
+            <option value="false" ${!job.commuteTaxExempt?'selected':''}>いいえ</option>
+          </select>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="foot-note" style="margin-bottom:8px;">締め日・支払日</div>
+      <div class="grid">
+        <div class="row-field"><label>締め日</label>
+          <select data-job-field="cutoffDay" data-job-idx="${jIdx}">${dayOptionsHTML(job.cutoffDay)}</select>
+        </div>
+        <div class="row-field"><label>支払いは締め日の何ヶ月後?</label>
+          <select data-job-field="paymentMonthsAfter" data-job-idx="${jIdx}">
+            <option value="0" ${job.paymentMonthsAfter===0?'selected':''}>当月</option>
+            <option value="1" ${job.paymentMonthsAfter===1?'selected':''}>翌月</option>
+            <option value="2" ${job.paymentMonthsAfter===2?'selected':''}>翌々月</option>
+            <option value="3" ${job.paymentMonthsAfter===3?'selected':''}>3ヶ月後</option>
+          </select>
+        </div>
+        <div class="row-field"><label>支払日</label>
+          <select data-job-field="paymentDay" data-job-idx="${jIdx}">${dayOptionsHTML(job.paymentDay)}</select>
+        </div>
+        <div class="row-field"><label>支払日が休日祝日の場合</label>
+          <select data-job-field="holidayAdjustment" data-job-idx="${jIdx}">
+            <option value="before" ${job.holidayAdjustment==='before'?'selected':''}>前営業日に前倒し</option>
+            <option value="after" ${job.holidayAdjustment==='after'?'selected':''}>翌営業日に後ろ倒し</option>
+            <option value="none" ${job.holidayAdjustment==='none'?'selected':''}>調整しない(そのまま)</option>
+          </select>
+        </div>
+      </div>
+      ${STATE.jobs.length>1 ? `<button class="btn ghost" data-del-job="${jIdx}" style="margin-top:10px;" type="button">このバイト先を削除</button>` : '<div class="foot-note" style="margin-top:8px;">最後の1件は削除できません(新しく追加してから削除してください)。</div>'}
+    </div>
+  `).join('');
+
+  STATE.jobs.forEach((job,jIdx)=>{
+    const bandsContainer = container.querySelector(`.job-bands-list[data-job-idx="${jIdx}"]`);
+    if(!bandsContainer) return;
+    bandsContainer.innerHTML = job.wageBands.map((b,bIdx)=>`
+      <div class="grid" style="margin-bottom:8px; align-items:end;">
+        <div class="row-field"><label>開始</label><select data-band-job="${jIdx}" data-band-idx="${bIdx}" data-band-field="start"></select></div>
+        <div class="row-field"><label>終了</label><select data-band-job="${jIdx}" data-band-idx="${bIdx}" data-band-field="end"></select></div>
+        <div class="row-field"><label>加算額(円)</label><input type="number" data-band-job="${jIdx}" data-band-idx="${bIdx}" data-band-field="addon" value="${b.addon}"></div>
+        <div class="row-field"><button class="btn ghost" data-band-del-job="${jIdx}" data-band-del-idx="${bIdx}" type="button">削除</button></div>
+      </div>
+    `).join('');
+    job.wageBands.forEach((b,bIdx)=>{
+      const s = bandsContainer.querySelector(`select[data-band-idx="${bIdx}"][data-band-field="start"]`);
+      const e = bandsContainer.querySelector(`select[data-band-idx="${bIdx}"][data-band-field="end"]`);
+      if(s) populateTimeSelect(s, b.start);
+      if(e) populateTimeSelect(e, b.end);
+    });
+  });
+
+  container.querySelectorAll('[data-job-field]').forEach(el=>{
+    el.addEventListener('change', async ()=>{
+      const jIdx = Number(el.dataset.jobIdx);
+      const field = el.dataset.jobField;
+      let val = el.value;
+      if(['baseWage','sunAdd','tripFare','passFare','passThreshold','cutoffDay','paymentMonthsAfter','paymentDay'].includes(field)) val = Number(val)||0;
+      if(field==='commuteTaxExempt') val = (val==='true');
+      STATE.jobs[jIdx][field] = val;
+      await saveJSON('jobs', STATE.jobs);
+      renderAll();
+    });
+  });
+  container.querySelectorAll('[data-band-job]:not([data-band-del-job])').forEach(el=>{
+    el.addEventListener('change', async ()=>{
+      const jIdx = Number(el.dataset.bandJob);
+      const bIdx = Number(el.dataset.bandIdx);
+      const field = el.dataset.bandField;
+      STATE.jobs[jIdx].wageBands[bIdx][field] = field==='addon' ? (Number(el.value)||0) : el.value;
+      await saveJSON('jobs', STATE.jobs);
+      renderAll();
+    });
+  });
+  container.querySelectorAll('[data-add-band-job]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const jIdx = Number(btn.dataset.addBandJob);
+      STATE.jobs[jIdx].wageBands.push({ start:'09:00', end:'17:00', addon:0 });
+      await saveJSON('jobs', STATE.jobs);
+      renderAll();
+    });
+  });
+  container.querySelectorAll('[data-band-del-job]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const jIdx = Number(btn.dataset.bandDelJob);
+      const bIdx = Number(btn.dataset.bandDelIdx);
+      STATE.jobs[jIdx].wageBands.splice(bIdx,1);
+      await saveJSON('jobs', STATE.jobs);
+      renderAll();
+    });
+  });
+  container.querySelectorAll('[data-del-job]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      if(!confirm('このバイト先を削除します。登録済みのシフト・実績データは残りますが、そのバイト先が選べなくなるため実質参照できなくなります。よろしいですか？')) return;
+      const jIdx = Number(btn.dataset.delJob);
+      const removedId = STATE.jobs[jIdx].id;
+      STATE.jobs.splice(jIdx,1);
+      if(STATE.activeJobId===removedId){
+        STATE.activeJobId = STATE.jobs[0] ? STATE.jobs[0].id : null;
+      }
+      await saveJSON('jobs', STATE.jobs);
+      await saveJSON('activeJobId', STATE.activeJobId);
+      renderAll();
+    });
+  });
+}
+
+function renderJobSwitcher(){
+  const bar = document.getElementById('job-switcher-bar');
+  const sel = document.getElementById('global-job-select');
+  if(!bar || !sel) return;
+  bar.style.display = (STATE.activeTab==='settings' || STATE.activeTab==='annual') ? 'none' : 'flex';
+  sel.innerHTML = STATE.jobs.map(j=>`<option value="${j.id}" ${j.id===STATE.activeJobId?'selected':''}>${j.name}</option>`).join('');
+}
+
+function renderQuickShifts(){
+  const container = document.getElementById('quick-shift-buttons');
+  if(!container) return;
+  const counts = {};
+  STATE.shifts.filter(s=>s.jobId===STATE.activeJobId).forEach(s=>{
+    const key = s.start+'-'+s.end;
+    counts[key] = (counts[key]||0)+1;
+  });
+  const frequent = Object.entries(counts).filter(([k,c])=>c>=5).sort((a,b)=>b[1]-a[1]);
+  if(frequent.length===0){ container.innerHTML=''; container.style.display='none'; return; }
+  container.style.display='flex';
+  container.innerHTML = frequent.map(([key,count])=>{
+    const [start,end] = key.split('-');
+    return `<button type="button" class="quick-shift-btn" data-start="${start}" data-end="${end}">${start}〜${end} <span style="opacity:.6">(${count}回)</span></button>`;
+  }).join('');
+  container.querySelectorAll('.quick-shift-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      setStartValue(btn.dataset.start);
+      setEndValue(btn.dataset.end);
+      renderShiftPreview();
+    });
+  });
+}
+
+function renderAll(){
+  // safety net: if jobs somehow became empty, recreate a default one instead of crashing
+  if(!STATE.jobs || STATE.jobs.length===0){
+    STATE.jobs = JSON.parse(JSON.stringify(DEFAULT_JOBS));
+    STATE.activeJobId = STATE.jobs[0].id;
+    saveJSON('jobs', STATE.jobs);
+    saveJSON('activeJobId', STATE.activeJobId);
+  }
+  if(!STATE.activeJobId || !STATE.jobs.find(j=>j.id===STATE.activeJobId)){
+    STATE.activeJobId = STATE.jobs[0].id;
+    saveJSON('activeJobId', STATE.activeJobId);
+  }
+  renderTabs();
+  renderJobSwitcher();
+  renderShiftTable();
+  renderShiftPreview();
+  renderQuickShifts();
+  renderActualPage();
+  renderCyclePage();
+  renderAnnualPage();
+  renderSettingsPage();
+}
+
+// ---------- events ----------
+document.getElementById('tabs').addEventListener('click', (e)=>{
+  const btn = e.target.closest('button[data-tab]');
+  if(!btn) return;
+  STATE.activeTab = btn.dataset.tab;
+  renderAll();
+});
+
+['in-date','in-break'].forEach(id=>{
+  document.getElementById(id).addEventListener('input', renderShiftPreview);
+});
+['in-start-h','in-start-m','in-end-h','in-end-m'].forEach(id=>{
+  document.getElementById(id).addEventListener('change', renderShiftPreview);
+});
+
+document.getElementById('btn-add-shift').addEventListener('click', async ()=>{
+  const date = document.getElementById('in-date').value;
+  const start = getStartValue();
+  const end = getEndValue();
+  const brk = Number(document.getElementById('in-break').value)||0;
+  if(!date || !start || !end){ alert('日付・開始・終了時刻を入力してください'); return; }
+  if(!STATE.activeJobId){ alert('先に「設定」タブでバイト先を登録してください'); return; }
+  STATE.shifts.push({ id: Date.now()+'-'+Math.random().toString(36).slice(2), jobId: STATE.activeJobId, date, start, end, breakMin: brk });
+  await saveJSON('shifts', STATE.shifts);
+  renderAll();
+});
+
+document.getElementById('btn-add-actual').addEventListener('click', async ()=>{
+  const month = document.getElementById('ap-month').value; // 'YYYY-MM'
+  const taxable = Number(document.getElementById('ap-taxable').value)||0;
+  const commute = Number(document.getElementById('ap-commute').value)||0;
+  const note = document.getElementById('ap-note').value.trim();
+  if(!month){ alert('支払年月を入力してください'); return; }
+  if(taxable===0 && commute===0){ alert('金額を入力してください'); return; }
+  if(!STATE.activeJobId){ alert('先に「設定」タブでバイト先を登録してください'); return; }
+  STATE.actualPayments.push({ id: Date.now()+'-'+Math.random().toString(36).slice(2), jobId: STATE.activeJobId, month, taxable, commute, note });
+  await saveJSON('actualPayments', STATE.actualPayments);
+  document.getElementById('ap-taxable').value = '';
+  document.getElementById('ap-commute').value = '';
+  document.getElementById('ap-note').value = '';
+  renderAll();
+});
+
+document.getElementById('cycle-select').addEventListener('change', (e)=>{
+  STATE.currentCycleKey = e.target.value;
+  renderCyclePage();
+});
+
+async function saveCycleCorrection(field, value){
+  const key = STATE.currentCycleKey;
+  const jobId = STATE.activeJobId;
+  if(!key || !jobId) return;
+  if(!STATE.cycleCorrections[jobId]) STATE.cycleCorrections[jobId] = {};
+  if(!STATE.cycleCorrections[jobId][key]) STATE.cycleCorrections[jobId][key] = {};
+  STATE.cycleCorrections[jobId][key][field] = (value === '' ? null : Number(value));
+  // clean up empty entries
+  if(STATE.cycleCorrections[jobId][key].wage == null && STATE.cycleCorrections[jobId][key].commute == null){
+    delete STATE.cycleCorrections[jobId][key];
+  }
+  await saveJSON('cycleCorrections', STATE.cycleCorrections);
+  renderAll();
+}
+document.getElementById('c-wage-correction').addEventListener('change', (e)=> saveCycleCorrection('wage', e.target.value));
+document.getElementById('c-commute-correction').addEventListener('change', (e)=> saveCycleCorrection('commute', e.target.value));
+
+async function fetchHolidaysOnline(){
+  const status = document.getElementById('holiday-fetch-status');
+  status.textContent = '取得中...';
+  try{
+    const res = await fetch('https://holidays-jp.github.io/api/v1/date.json');
+    if(!res.ok) throw new Error('network error');
+    const data = await res.json(); // { "2026-01-01": "元日", ... }
+    let added = 0;
+    Object.entries(data).forEach(([date,name])=>{
+      if(!(date in STATE.holidays)) added++;
+      STATE.holidays[date] = name;
+    });
+    await saveJSON('holidays', STATE.holidays);
+    renderAll();
+    status.textContent = `取得できました。${Object.keys(data).length}件の祝日データを反映しました(新規${added}件)。`;
+  }catch(e){
+    status.textContent = 'オンライン取得に失敗しました(ネットワーク環境をご確認ください)。手動で追加することもできます。';
+  }
+}
+document.getElementById('btn-fetch-holidays').addEventListener('click', fetchHolidaysOnline);
+
+document.getElementById('btn-add-holiday').addEventListener('click', async ()=>{
+  const d = document.getElementById('s-holiday-add').value;
+  if(!d){ return; }
+  STATE.holidays[d] = 'カスタム祝日';
+  await saveJSON('holidays', STATE.holidays);
+  renderAll();
+});
+
+function bindBoolSetting(id, path){
+  document.getElementById(id).addEventListener('change', async (e)=>{
+    const val = e.target.value === 'true';
+    const parts = path.split('.');
+    let obj = STATE.settings;
+    for(let i=0;i<parts.length-1;i++) obj = obj[parts[i]];
+    obj[parts[parts.length-1]] = val;
+    await saveJSON('settings', STATE.settings);
+    renderAll();
+  });
+}
+function bindStringSetting(id, path){
+  document.getElementById(id).addEventListener('change', async (e)=>{
+    const parts = path.split('.');
+    let obj = STATE.settings;
+    for(let i=0;i<parts.length-1;i++) obj = obj[parts[i]];
+    obj[parts[parts.length-1]] = e.target.value;
+    await saveJSON('settings', STATE.settings);
+    renderAll();
+  });
+}
+bindBoolSetting('s-is-student','profile.isStudent');
+bindBoolSetting('s-gakusei-tokurei','profile.usesGakuseiTokurei');
+bindBoolSetting('s-dependent-tax','profile.dependentTax');
+bindStringSetting('s-dependent-relationship','profile.dependentRelationship');
+bindBoolSetting('s-dependent-shaho','profile.dependentSocialInsurance');
+
+document.getElementById('btn-add-job').addEventListener('click', async ()=>{
+  try{
+    const newJob = {
+      id: 'job-'+Date.now()+'-'+Math.random().toString(36).slice(2),
+      name: `バイト先${STATE.jobs.length+1}`,
+      baseWage: 1000,
+      wageBands: [{ start:'09:00', end:'17:00', addon:0 }],
+      sunAdd: 0,
+      tripFare: 0,
+      passFare: 0,
+      passThreshold: 15,
+      commuteTaxExempt: true,
+      cutoffDay: 0,
+      paymentMonthsAfter: 1,
+      paymentDay: 25,
+      holidayAdjustment: 'before'
+    };
+    STATE.jobs.push(newJob);
+    STATE.activeJobId = newJob.id;
+    await saveJSON('jobs', STATE.jobs);
+    await saveJSON('activeJobId', STATE.activeJobId);
+    renderAll();
+    // scroll to and focus the newly added job's name field so the click has a visible effect
+    requestAnimationFrame(()=>{
+      const newIdx = STATE.jobs.length-1;
+      const nameInput = document.querySelector(`input[data-job-field="name"][data-job-idx="${newIdx}"]`);
+      if(nameInput){
+        nameInput.scrollIntoView({behavior:'smooth', block:'center'});
+        nameInput.focus();
+        nameInput.select();
+      }
+    });
+  }catch(err){
+    console.error('バイト先の追加でエラー:', err);
+    alert('バイト先の追加に失敗しました。開発者ツール(F12)のConsoleに出ているエラー内容を教えてもらえると調査できます。');
+  }
+});
+
+document.getElementById('global-job-select').addEventListener('change', async (e)=>{
+  STATE.activeJobId = e.target.value;
+  STATE.currentCycleKey = null; // let the cycle tab pick this job's most recent cycle
+  await saveJSON('activeJobId', STATE.activeJobId);
+  renderAll();
+});
+
+document.getElementById('btn-reset-all').addEventListener('click', async ()=>{
+  if(!confirm('すべてのシフト・設定データを削除します。よろしいですか？')) return;
+  STATE.shifts = [];
+  STATE.settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+  STATE.holidays = Object.fromEntries(DEFAULT_HOLIDAYS);
+  STATE.actualPayments = [];
+  STATE.cycleCorrections = {};
+  STATE.jobs = JSON.parse(JSON.stringify(DEFAULT_JOBS));
+  STATE.activeJobId = STATE.jobs[0].id;
+  await saveJSON('shifts', STATE.shifts);
+  await saveJSON('settings', STATE.settings);
+  await saveJSON('holidays', STATE.holidays);
+  await saveJSON('actualPayments', STATE.actualPayments);
+  await saveJSON('cycleCorrections', STATE.cycleCorrections);
+  await saveJSON('jobs', STATE.jobs);
+  await saveJSON('activeJobId', STATE.activeJobId);
+  renderAll();
+});
+
+document.getElementById('btn-connect-fs').addEventListener('click', connectFsFile);
+document.getElementById('btn-reconnect-fs').addEventListener('click', reconnectFsFile);
+document.getElementById('btn-disconnect-fs').addEventListener('click', async ()=>{
+  if(!confirm('ファイルとの同期を解除します(ファイル自体は削除されません、以後はこのブラウザ内に保存されます)。よろしいですか？')) return;
+  await disconnectFsFile();
+});
+
+// ---------- backup export/import ----------
+document.getElementById('btn-export').addEventListener('click', ()=>{
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    shifts: STATE.shifts,
+    actualPayments: STATE.actualPayments,
+    cycleCorrections: STATE.cycleCorrections,
+    jobs: STATE.jobs,
+    activeJobId: STATE.activeJobId,
+    settings: {
+      profile: STATE.settings.profile
+    },
+    holidays: STATE.holidays
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const today = new Date();
+  a.href = url;
+  a.download = `salary_backup_${today.getFullYear()}${pad(today.getMonth()+1)}${pad(today.getDate())}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  document.getElementById('backup-status').textContent = '書き出しました。ダウンロードフォルダを確認してください。';
+});
+
+document.getElementById('btn-import').addEventListener('click', ()=>{
+  document.getElementById('file-import').click();
+});
+
+document.getElementById('file-import').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async (ev)=>{
+    try{
+      const data = JSON.parse(ev.target.result);
+      if(!confirm(`このファイルには ${data.shifts ? data.shifts.length : 0} 件のシフトが含まれています。現在のデータを上書きして復元しますか？`)) return;
+      STATE.shifts = data.shifts || [];
+      STATE.actualPayments = data.actualPayments || [];
+      STATE.cycleCorrections = data.cycleCorrections || {};
+      if(data.jobs && data.jobs.length) STATE.jobs = data.jobs;
+      if(data.activeJobId) STATE.activeJobId = data.activeJobId;
+      if(data.settings){
+        STATE.settings = { ...STATE.settings, ...data.settings };
+      }
+      if(data.holidays) STATE.holidays = data.holidays;
+      await saveJSON('shifts', STATE.shifts);
+      await saveJSON('settings', STATE.settings);
+      await saveJSON('holidays', STATE.holidays);
+      await saveJSON('actualPayments', STATE.actualPayments);
+      await saveJSON('cycleCorrections', STATE.cycleCorrections);
+      await saveJSON('jobs', STATE.jobs);
+      await saveJSON('activeJobId', STATE.activeJobId);
+      renderAll();
+      document.getElementById('backup-status').textContent = '復元しました。';
+    }catch(err){
+      document.getElementById('backup-status').textContent = 'ファイルの読み込みに失敗しました。正しいバックアップファイルか確認してください。';
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+// ---------- init ----------
+async function hydrateStateFromStorage(){
+  const savedShifts = await loadJSON('shifts', null);
+  const savedSettings = await loadJSON('settings', null);
+  const savedHolidays = await loadJSON('holidays', null);
+  const savedActual = await loadJSON('actualPayments', null);
+  const savedCycleCorr = await loadJSON('cycleCorrections', null);
+  const savedJobs = await loadJSON('jobs', null);
+  const savedActiveJobId = await loadJSON('activeJobId', null);
+
+  STATE.shifts = savedShifts || [];
+  STATE.settings = savedSettings || JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+  if(!STATE.settings.profile) STATE.settings.profile = JSON.parse(JSON.stringify(DEFAULT_SETTINGS.profile));
+  if(!STATE.settings.profile.dependentRelationship) STATE.settings.profile.dependentRelationship = 'student_child';
+  STATE.holidays = savedHolidays || Object.fromEntries(DEFAULT_HOLIDAYS);
+  STATE.actualPayments = savedActual || [];
+  STATE.cycleCorrections = savedCycleCorr || {};
+  STATE.jobs = (savedJobs && savedJobs.length) ? savedJobs : JSON.parse(JSON.stringify(DEFAULT_JOBS));
+  // migrate: fill in cycle settings for jobs saved before this feature existed
+  STATE.jobs.forEach(job=>{
+    if(job.cutoffDay===undefined) job.cutoffDay = 20;
+    if(job.paymentMonthsAfter===undefined) job.paymentMonthsAfter = 1;
+    if(job.paymentDay===undefined) job.paymentDay = 5;
+    if(job.holidayAdjustment===undefined) job.holidayAdjustment = 'before';
+  });
+  STATE.activeJobId = (savedActiveJobId && STATE.jobs.find(j=>j.id===savedActiveJobId))
+    ? savedActiveJobId
+    : (STATE.jobs[0] ? STATE.jobs[0].id : null);
+
+  if(!savedHolidays){ await saveJSON('holidays', STATE.holidays); }
+  if(!savedSettings){ await saveJSON('settings', STATE.settings); }
+  if(!savedJobs || !savedJobs.length){ await saveJSON('jobs', STATE.jobs); }
+  if(!savedActiveJobId){ await saveJSON('activeJobId', STATE.activeJobId); }
+}
+
+async function init(){
+  if(window.storage){
+    await hydrateStateFromStorage();
+  }else{
+    await tryAutoRestoreFsHandle();
+    if(!FS_HANDLE){
+      await hydrateStateFromStorage(); // uses localStorage fallback
+    }
+  }
+
+  document.getElementById('in-date').valueAsDate = new Date();
+  populateHourSelect(document.getElementById('in-start-h'), '09');
+  populateMinuteSelect(document.getElementById('in-start-m'), '00');
+  populateHourSelect(document.getElementById('in-end-h'), '17');
+  populateMinuteSelect(document.getElementById('in-end-m'), '00');
+  renderStorageStatus();
+  renderAll();
+}
+init();
+</script>
+</body>
+</html>
