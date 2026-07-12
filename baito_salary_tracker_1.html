@@ -161,7 +161,7 @@
     <button data-tab="actual">受取実績</button>
     <button data-tab="cycle">給与サイクル</button>
     <button data-tab="annual">年間・壁管理</button>
-    <button data-tab="overage">超過後の対応</button>
+    <button data-tab="overage">壁が近い/超過</button>
     <button data-tab="settings">設定</button>
   </nav>
 
@@ -309,9 +309,9 @@
   <!-- OVERAGE TAB -->
   <div class="tabpage" id="page-overage" style="display:none;">
     <div class="panel">
-      <h2>超過後の対応</h2>
+      <h2>壁が近い・超えた時の対応</h2>
       <div class="foot-note" style="margin-bottom:14px;">
-        現在の年間累計(実績・シフト予定を含む)が壁を超えている場合、ここに「やることチェックリスト」と概算の負担増が表示されます。チェックを入れると次回開いた時も記憶されます。
+        各壁の残りが20%を切った時点(80%到達)で、ここに早めの準備事項が表示されます。実際に超えた場合は「やることチェックリスト」に切り替わります。チェックを入れると次回開いた時も記憶されます。
       </div>
     </div>
     <div id="overage-content"></div>
@@ -1084,7 +1084,25 @@ function computeAnnualAggregates(){
     taxableBasisTotal, taxableBasisProjection };
 }
 
-function getActionInfo(key, excess){
+// returns a concrete yen estimate for a given excess amount, or null if this
+// wall's impact isn't a simple formula (e.g. health insurance premiums vary by municipality)
+function computeImpactAmount(key, excess){
+  const e = Math.max(excess, 0);
+  switch(key){
+    case 'juuminzei': return 5000 + e*0.10;
+    case 'shakaihoken20h': return e*0.15;
+    case 'fuyoukoujo': return e>0 ? 380000*0.2 : 0; // cliff: full 38万円控除が即座に消える(超過額によらずほぼ一定)
+    case 'tokutei': return Math.min(e/380000, 1) * 630000 * 0.2; // 159万→197万の38万円区間で63万円控除が段階的に消える
+    case 'haigusha': return Math.min(e/380000, 1) * 380000 * 0.2; // 169万→207万の38万円区間で38万円控除が段階的に消える
+    case 'shotokuzei': return e*0.05105;
+    default: return null; // shakaihoken130 など
+  }
+}
+function isImpactCliff(key){
+  return key === 'fuyoukoujo'; // 段階的ではなく、超えた瞬間に一定額が丸ごと発生するタイプ
+}
+
+function getActionInfo(key){
   switch(key){
     case 'juuminzei':
       return {
@@ -1093,7 +1111,6 @@ function getActionInfo(key, excess){
           '翌年度(来年6月頃)に住民税の納税通知が届くので、金額を確認する',
           '給与天引き(特別徴収)か自分で納付(普通徴収)かを勤務先に確認しておくと安心'
         ],
-        impactLabel: fmtYen(5000 + Math.max(excess,0)*0.10) + '前後/年',
         deadline: null
       };
     case 'shakaihoken20h':
@@ -1103,7 +1120,6 @@ function getActionInfo(key, excess){
           '対象になる場合は、社会保険(健康保険・厚生年金)への加入手続きを勤務先が進めてくれる',
           '加入すると給与から保険料が天引きされるようになるので、以降の手取り額を確認する'
         ],
-        impactLabel: fmtYen(Math.max(excess,0)*0.15) + '前後/年(月収の約15%目安)',
         deadline: '条件を満たした月から(勤務先の判断による)'
       };
     case 'tokutei': case 'fuyoukoujo': case 'haigusha':
@@ -1114,7 +1130,6 @@ function getActionInfo(key, excess){
           '年末調整の時期(11〜12月頃)までに伝えれば、通常はそこで清算できる',
           '掛け持ちで年間20万円を超える副業収入がある場合、自分自身の確定申告が必要になることがある'
         ],
-        impactLabel: fmtYen(Math.min(Math.max(excess,0)>0?630000:0,630000)*0.2) + '前後/年(扶養している方の負担)',
         deadline: '年末調整の書類提出期限まで(勤務先による、通常11月頃)'
       };
     case 'shakaihoken130':
@@ -1125,7 +1140,6 @@ function getActionInfo(key, excess){
           '国民年金は第1号被保険者としての届出が必要(学生なら学生納付特例の申請も忘れずに)',
           '手続きが遅れると、扶養から外れた期間の医療費を後から精算する必要が出ることがあるので注意'
         ],
-        impactLabel: '国民健康保険料は自治体・前年所得で変動(学生納付特例利用なら年金は実質0円)',
         deadline: '扶養から外れた事実発生からできるだけ早く(目安5日〜14日以内、健保組合による)'
       };
     case 'shotokuzei':
@@ -1135,11 +1149,10 @@ function getActionInfo(key, excess){
           '2箇所以上のバイト先がある場合、メインでない方(従たる給与)の収入が年間20万円を超えると確定申告が必要',
           '確定申告が必要な場合は、翌年2/16頃〜3/15の期間に税務署または国税庁のサイトから申告する'
         ],
-        impactLabel: fmtYen(Math.max(excess,0)*0.05105) + '前後/年',
         deadline: '確定申告が必要な場合は翌年3/15まで'
       };
     default:
-      return { checklist: ['詳細は国税庁・日本年金機構の公式情報を確認してください'], impactLabel: '-', deadline: null };
+      return { checklist: ['詳細は国税庁・日本年金機構の公式情報を確認してください'], deadline: null };
   }
 }
 
@@ -1148,18 +1161,20 @@ function renderOveragePage(){
   if(!container) return;
   const agg = computeAnnualAggregates();
   const walls = generateWalls();
-  const exceeded = walls.filter(w=>{
+  const relevant = walls.map(w=>{
     const base = w.basis==='wagePlusCommute' ? agg.totalWithCommute : agg.taxableBasisTotal;
-    return base >= w.amount;
-  });
-  if(exceeded.length===0){
-    container.innerHTML = '<div class="panel"><div class="empty">現在、超えている壁はありません。引き続き「年間・壁管理」タブで進み具合を確認してください。</div></div>';
+    const pct = base / w.amount;
+    return { w, base, pct };
+  }).filter(x=> x.pct >= 0.8);
+
+  if(relevant.length===0){
+    container.innerHTML = '<div class="panel"><div class="empty">現在、残り20%を切っている壁はありません。引き続き「年間・壁管理」タブで進み具合を確認してください。</div></div>';
     return;
   }
-  container.innerHTML = exceeded.map(w=>{
-    const base = w.basis==='wagePlusCommute' ? agg.totalWithCommute : agg.taxableBasisTotal;
+  container.innerHTML = relevant.map(({w,base,pct})=>{
+    const exceeded = pct >= 1;
     const excess = base - w.amount;
-    const info = getActionInfo(w.key, excess);
+    const info = getActionInfo(w.key);
     const checklistHtml = info.checklist.map((item,i)=>{
       const checked = !!(STATE.overageChecklist[w.key] && STATE.overageChecklist[w.key][i]);
       return `<label style="display:flex; align-items:flex-start; gap:8px; margin-bottom:8px; font-size:13px; cursor:pointer;">
@@ -1167,13 +1182,49 @@ function renderOveragePage(){
         <span style="${checked?'text-decoration:line-through; color:var(--ink-soft);':''}">${item}</span>
       </label>`;
     }).join('');
-    return `<div class="panel" style="background:#FFF9F0; border-color:var(--gold);">
-      <h2 style="color:var(--danger);">⚠ ${w.name}を超えています <span class="tag">${(w.amount/10000).toFixed(0)}万円ライン</span></h2>
+    const remaining = w.amount - base;
+    const headerColor = exceeded ? 'var(--danger)' : 'var(--gold)';
+    const headerIcon = exceeded ? '⚠' : '🔶';
+    const headerText = exceeded ? `${w.name}を超えています` : `${w.name}の残りが20%を切りました`;
+    const checklistLabel = exceeded ? 'やることチェックリスト' : '今のうちに確認・準備しておくと安心なこと';
+    const firstStatLabel = exceeded ? '超過額' : '残り金額(あと)';
+    const firstStatValue = exceeded ? fmtYen(excess) : fmtYen(remaining);
+    const firstStatColor = exceeded ? 'var(--danger)' : 'var(--gold)';
+    const panelBg = exceeded ? '#FFF9F0' : '#FBFDFC';
+    const panelBorder = exceeded ? 'var(--gold)' : 'var(--line)';
+
+    // impact section: concrete "your case" figure once exceeded, illustrative examples before
+    let impactHtml;
+    const genericAmount = computeImpactAmount(w.key, 0) !== null; // does this wall have a computable formula at all?
+    if(exceeded){
+      const amt = computeImpactAmount(w.key, excess);
+      const label = amt !== null
+        ? `${fmtYen(amt)}前後/年`
+        : (w.key==='shakaihoken130' ? '国民健康保険料は自治体・前年所得で変動(学生納付特例利用なら年金は実質0円)' : '-');
+      impactHtml = `<div class="stat"><div class="label">あなたの場合の概算負担増</div><div class="value" style="font-size:14px; color:var(--gold);">${label}</div></div>`;
+    }else{
+      if(genericAmount && !isImpactCliff(w.key)){
+        const examples = [30000, 100000, 300000].map(ex=>{
+          const amt = computeImpactAmount(w.key, ex);
+          return `${(ex/10000).toFixed(0)}万円超えると約${fmtYen(amt)}`;
+        }).join(' / ');
+        impactHtml = `<div class="stat" style="grid-column:1 / -1;"><div class="label">超えた場合の負担増の目安(例)</div><div class="value" style="font-size:13px; color:var(--gold); font-weight:700;">${examples}</div></div>`;
+      }else if(genericAmount && isImpactCliff(w.key)){
+        const amt = computeImpactAmount(w.key, 1);
+        impactHtml = `<div class="stat" style="grid-column:1 / -1;"><div class="label">超えた場合の負担増の目安</div><div class="value" style="font-size:13px; color:var(--gold); font-weight:700;">1円でも超えると控除が丸ごと消え、約${fmtYen(amt)}前後/年の負担増(超過額の大小は関係ありません)</div></div>`;
+      }else{
+        impactHtml = `<div class="stat" style="grid-column:1 / -1;"><div class="label">超えた場合の負担増の目安</div><div class="value" style="font-size:13px; color:var(--gold);">国民健康保険料は自治体・前年所得で変動するため一概には言えません(学生納付特例利用なら年金は実質0円)</div></div>`;
+      }
+    }
+
+    return `<div class="panel" style="background:${panelBg}; border-color:${panelBorder};">
+      <h2 style="color:${headerColor};">${headerIcon} ${headerText} <span class="tag">${(w.amount/10000).toFixed(0)}万円ライン・${Math.round(pct*100)}%到達</span></h2>
       <div class="stat-grid" style="margin-bottom:14px;">
-        <div class="stat"><div class="label">超過額</div><div class="value num" style="color:var(--danger);">${fmtYen(excess)}</div></div>
-        <div class="stat"><div class="label">概算の負担増</div><div class="value" style="font-size:14px; color:var(--gold);">${info.impactLabel}</div></div>
+        <div class="stat"><div class="label">${firstStatLabel}</div><div class="value num" style="color:${firstStatColor};">${firstStatValue}</div></div>
+        ${impactHtml}
       </div>
-      <div class="foot-note" style="margin-bottom:10px; font-weight:700; color:var(--ink);">やることチェックリスト</div>
+      ${!exceeded ? `<div class="foot-note" style="margin-bottom:10px;">まだこの壁を超えてはいませんが、残り20%を切ったので早めに準備しておくと安心です。</div>` : ''}
+      <div class="foot-note" style="margin-bottom:10px; font-weight:700; color:var(--ink);">${checklistLabel}</div>
       ${checklistHtml}
       ${info.deadline ? `<div class="foot-note" style="margin-top:8px; color:var(--danger); font-weight:700;">期限の目安: ${info.deadline}</div>` : ''}
       <div class="foot-note" style="margin-top:10px;">※ あくまで一般的な目安です。正確な手続き・金額は勤務先の担当者や自治体、国税庁・日本年金機構の窓口でご確認ください。</div>
