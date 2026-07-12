@@ -161,6 +161,7 @@
     <button data-tab="actual">受取実績</button>
     <button data-tab="cycle">給与サイクル</button>
     <button data-tab="annual">年間・壁管理</button>
+    <button data-tab="overage">超過後の対応</button>
     <button data-tab="settings">設定</button>
   </nav>
 
@@ -305,12 +306,26 @@
     </div>
   </div>
 
+  <!-- OVERAGE TAB -->
+  <div class="tabpage" id="page-overage" style="display:none;">
+    <div class="panel">
+      <h2>超過後の対応</h2>
+      <div class="foot-note" style="margin-bottom:14px;">
+        現在の年間累計(実績・シフト予定を含む)が壁を超えている場合、ここに「やることチェックリスト」と概算の負担増が表示されます。チェックを入れると次回開いた時も記憶されます。
+      </div>
+    </div>
+    <div id="overage-content"></div>
+  </div>
+
   <!-- SETTINGS TAB -->
   <div class="tabpage" id="page-settings" style="display:none;">
     <div class="panel">
       <h2>プロフィール設定</h2>
       <div class="grid">
-        <div class="row-field"><label>学生ですか?</label>
+        <div class="row-field"><label>年齢</label>
+          <input type="number" id="s-age" min="0" max="120" step="1">
+        </div>
+        <div class="row-field"><label>学生ですか?(在学しているか)</label>
           <select id="s-is-student"><option value="true">はい</option><option value="false">いいえ(パート等)</option></select>
         </div>
         <div class="row-field" id="s-gakusei-tokurei-wrap"><label>学生納付特例を利用していますか?</label>
@@ -321,9 +336,8 @@
         </div>
         <div class="row-field" id="s-dependent-relationship-wrap"><label>扶養している方との続柄</label>
           <select id="s-dependent-relationship">
-            <option value="student_child">親の子(19〜22歳の学生年代)</option>
+            <option value="other">配偶者以外の親族(親の子・孫・兄弟姉妹など)</option>
             <option value="spouse">配偶者(夫・妻)</option>
-            <option value="other">その他の親族(16歳以上の子・親など)</option>
           </select>
         </div>
         <div class="row-field"><label>社会保険の扶養(親・配偶者)に入っていますか?</label>
@@ -331,7 +345,7 @@
         </div>
       </div>
       <div class="foot-note" style="margin-top:8px;">
-        ここでの回答に応じて、「年間・壁管理」タブに表示される壁の項目・金額・注釈が自動的に変わります(すべてのバイト先に共通の設定です)。パート主婦・主夫の方は「学生ですか?」を「いいえ」に、続柄を「配偶者」にすると、配偶者控除・配偶者特別控除ベースの壁に切り替わります。<br>
+        「学生かどうか」と「年齢」は別の項目として扱っています。特定扶養控除・特定親族特別控除や社会保険の150万円ラインは<b>19〜22歳という年齢だけ</b>で決まり、実際に学校に通っているかは関係ありません。逆に「学生納付特例」や「106万円の壁の学生除外」は年齢に関係なく在学しているかどうかで決まります。ここでの回答に応じて、「年間・壁管理」タブに表示される壁の項目・金額・注釈が自動的に変わります(すべてのバイト先に共通の設定です)。パート主婦・主夫の方は続柄を「配偶者」にすると、配偶者控除・配偶者特別控除ベースの壁に切り替わります。<br>
         ※ 会社によっては配偶者や扶養家族の収入額に応じて「家族手当・扶養手当」を支給する制度があり、その基準額(多くは103万円か130万円あたり)を超えると手当が無くなることがあります。これは会社ごとの制度なので、この壁トラッキングには含まれていません。心当たりがあれば勤務先の規定を確認してみてください。
       </div>
     </div>
@@ -479,6 +493,7 @@ async function useFsHandle(handle){
       shifts: STATE.shifts,
       actualPayments: STATE.actualPayments,
       cycleCorrections: STATE.cycleCorrections,
+      overageChecklist: STATE.overageChecklist,
       holidays: STATE.holidays,
       jobs: STATE.jobs,
       activeJobId: STATE.activeJobId,
@@ -611,11 +626,12 @@ const DEFAULT_JOBS = [
 
 const DEFAULT_SETTINGS = {
   profile: {
+    age: 20,
     isStudent: true,
     usesGakuseiTokurei: true,
     dependentTax: true,
     dependentSocialInsurance: true,
-    dependentRelationship: 'student_child' // 'student_child' | 'spouse' | 'other'
+    dependentRelationship: 'other' // 'other' (non-spouse relative; age decides student-age treatment) | 'spouse'
   }
 };
 
@@ -624,6 +640,7 @@ let STATE = {
   holidays: {},      // {'YYYY-MM-DD': name}
   actualPayments: [], // {id, jobId, month:'YYYY-MM', taxable, commute, note}
   cycleCorrections: {}, // { [jobId]: { 'YYYY-MM': {wage:number|null, commute:number|null} } }
+  overageChecklist: {}, // { [wallKey]: { [itemIndex]: boolean } }
   jobs: [],          // array of job config objects
   activeJobId: null,
   settings: JSON.parse(JSON.stringify(DEFAULT_SETTINGS)),
@@ -793,7 +810,7 @@ function renderTabs(){
   document.querySelectorAll('#tabs button').forEach(b=>{
     b.classList.toggle('active', b.dataset.tab===STATE.activeTab);
   });
-  ['entry','actual','cycle','annual','settings'].forEach(t=>{
+  ['entry','actual','cycle','annual','overage','settings'].forEach(t=>{
     document.getElementById('page-'+t).style.display = (t===STATE.activeTab)?'block':'none';
   });
 }
@@ -977,19 +994,22 @@ function generateWalls(){
   }
 
   if(p.dependentTax){
-    const rel = p.dependentRelationship || 'student_child';
+    const rel = p.dependentRelationship || 'other';
+    const age = Number(p.age);
+    const isStudentAgeBracket = (rel !== 'spouse') && age>=19 && age<=22;
     if(rel==='spouse'){
       walls.push({ key:'haigusha', name:'配偶者控除・配偶者特別控除', amount:1690000, basis:'wage',
         note:'136万円までは配偶者控除で満額38万円。136万円を超えても169万円までは配偶者特別控除で引き続き満額38万円が維持され、207万円に向けて段階的に減っていきます(207万円超でゼロ)。ブラケットが細かいため、正確な金額は国税庁の早見表で確認してください。目安: 満額の38万円控除がゼロになった場合、配偶者の税率次第で所得税・住民税合わせておおむね年間4〜8万円程度の配偶者側の税負担増',
         verifiedDate: VERIFIED, sourceName:'国税庁 No.1195 配偶者特別控除', sourceUrl:'https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1195.htm' });
-    }else if(rel==='other'){
-      walls.push({ key:'fuyoukoujo', name:'扶養控除(通常)', amount:1360000, basis:'wage',
-        note:'136万円を1円でも超えると扶養控除(38万円、16歳以上の子の場合等)が丸ごと無くなる「崖」があります(19〜22歳の学生年代のような緩和措置はありません)。令和8年分(2026年分)から基準額が123万円→136万円に引き上げられています。目安: 扶養している方の税率次第で所得税・住民税合わせておおむね年間4〜8万円程度の税負担増',
-        verifiedDate: VERIFIED, sourceName:'国税庁 No.1180 扶養控除', sourceUrl:'https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1180.htm' });
-    }else{
-      walls.push({ key:'tokutei', name:'特定扶養控除(19-22歳の学生年代)', amount:1590000, basis:'wage',
-        note:'136万円までは通常の扶養控除と同じ63万円。136万円を超えても159万円までは特定親族特別控除で引き続き満額63万円が維持され、197万円に向けて段階的に減っていきます(197万円超でゼロ)。令和7年に導入された、崖を無くすための緩和措置で、令和8年分でさらに基準額が引き上げられています。目安: 満額の63万円控除が丸ごと無くなった場合、親の税率次第で所得税・住民税合わせておおむね年間6〜13万円程度の親の税負担増',
+    }else if(isStudentAgeBracket){
+      walls.push({ key:'tokutei', name:'特定扶養控除(19〜22歳)', amount:1590000, basis:'wage',
+        note:'136万円までは通常の扶養控除と同じ63万円。136万円を超えても159万円までは特定親族特別控除で引き続き満額63万円が維持され、197万円に向けて段階的に減っていきます(197万円超でゼロ)。この扱いは在学しているかどうかに関係なく、12月31日時点の年齢が19〜22歳であれば対象です。令和7年に導入された、崖を無くすための緩和措置で、令和8年分でさらに基準額が引き上げられています。目安: 満額の63万円控除が丸ごと無くなった場合、扶養している方の税率次第で所得税・住民税合わせておおむね年間6〜13万円程度の税負担増',
         verifiedDate: VERIFIED, sourceName:'国税庁 No.1177 特定親族特別控除', sourceUrl:'https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1177.htm' });
+    }else{
+      const ageCaveat = age < 16 ? '(16歳未満は扶養控除の対象外です。児童手当等の対象になります)' : '';
+      walls.push({ key:'fuyoukoujo', name:'扶養控除(通常)', amount:1360000, basis:'wage',
+        note:`136万円を1円でも超えると扶養控除(38万円)が丸ごと無くなる「崖」があります(19〜22歳の特定扶養控除のような緩和措置はありません)。令和8年分(2026年分)から基準額が123万円→136万円に引き上げられています。${ageCaveat} 目安: 扶養している方の税率次第で所得税・住民税合わせておおむね年間4〜8万円程度の税負担増`,
+        verifiedDate: VERIFIED, sourceName:'国税庁 No.1180 扶養控除', sourceUrl:'https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1180.htm' });
     }
   }
 
@@ -1002,12 +1022,13 @@ function generateWalls(){
     }else{
       pensionNote = '20歳以上は国民年金の納付義務があり年間約21万円(低所得なら免除制度あり)';
     }
-    // 2025年10月の改正で、19〜22歳の学生年代(配偶者を除く)は130万円ではなく150万円が収入要件になった
-    const rel = p.dependentRelationship || 'student_child';
-    const isStudentAgeException = (rel === 'student_child');
+    // 2025年10月の改正で、19〜22歳(配偶者を除く)は130万円ではなく150万円が収入要件になった。これは在学しているかに関係なく年齢だけで決まる
+    const rel = p.dependentRelationship || 'other';
+    const age = Number(p.age);
+    const isStudentAgeException = (rel !== 'spouse') && age>=19 && age<=22;
     const shakaihoken130Amount = isStudentAgeException ? 1500000 : 1300000;
     const ageNote = isStudentAgeException
-      ? '<b>2025年10月の改正で、19〜22歳の学生年代は130万円ではなく150万円が収入要件になっています。</b>'
+      ? '<b>2025年10月の改正で、19〜22歳は130万円ではなく150万円が収入要件になっています(在学しているかは関係なく年齢だけで決まります)。</b>'
       : '';
     walls.push({ key:'shakaihoken130', name:'社会保険上の扶養', amount:shakaihoken130Amount, basis:'wagePlusCommute',
       note:`${ageNote}超えると扶養している方の健康保険の扶養(医療保険)から外れ、自分で国民健康保険(または勤務先の社保)に加入。※この壁だけは非課税の通勤手当も収入に含めて判定。目安: 国民健康保険料は前年所得ベースのため超えた年はそこまで高くならないことが多い。<b>国民年金は130万円の壁とは別の話</b>: ${pensionNote}`,
@@ -1021,11 +1042,8 @@ function generateWalls(){
   return walls;
 }
 
-function renderAnnualPage(){
+function computeAnnualAggregates(){
   const year = new Date().getFullYear();
-  document.getElementById('year-tag').textContent = year+'年';
-
-  // aggregate across ALL jobs, by actual payment year, using cycle-level corrections where present
   let shiftTotal = 0;
   let commuteTotal = 0;       // all commute, regardless of exempt flag (used for the 130万 wall)
   let commuteTaxableTotal = 0; // only commute from jobs marked as NOT tax-exempt
@@ -1056,6 +1074,131 @@ function renderAnnualPage(){
   const monthsElapsed = Math.max(1, daysElapsed/30.44);
   const pace = total/monthsElapsed;
   const projection = pace*12;
+  const commutePaceAnnual = (commuteTotal+actualCommuteTotal)/monthsElapsed*12;
+  const commuteTaxablePaceAnnual = commuteTaxableTotal/monthsElapsed*12;
+  const taxableBasisTotal = total + commuteTaxableTotal;
+  const taxableBasisProjection = projection + commuteTaxablePaceAnnual;
+
+  return { year, shiftTotal, commuteTotal, commuteTaxableTotal, perJobTotals, actualTotal, actualCommuteTotal,
+    total, totalWithCommute, pace, projection, monthsElapsed, commutePaceAnnual, commuteTaxablePaceAnnual,
+    taxableBasisTotal, taxableBasisProjection };
+}
+
+function getActionInfo(key, excess){
+  switch(key){
+    case 'juuminzei':
+      return {
+        checklist: [
+          '特にすぐ必要な手続きはありません(通常は自動で計算されます)',
+          '翌年度(来年6月頃)に住民税の納税通知が届くので、金額を確認する',
+          '給与天引き(特別徴収)か自分で納付(普通徴収)かを勤務先に確認しておくと安心'
+        ],
+        impactLabel: fmtYen(5000 + Math.max(excess,0)*0.10) + '前後/年',
+        deadline: null
+      };
+    case 'shakaihoken20h':
+      return {
+        checklist: [
+          '勤務先の労務・人事担当に、週の勤務時間や月収の状況を伝えて相談する',
+          '対象になる場合は、社会保険(健康保険・厚生年金)への加入手続きを勤務先が進めてくれる',
+          '加入すると給与から保険料が天引きされるようになるので、以降の手取り額を確認する'
+        ],
+        impactLabel: fmtYen(Math.max(excess,0)*0.15) + '前後/年(月収の約15%目安)',
+        deadline: '条件を満たした月から(勤務先の判断による)'
+      };
+    case 'tokutei': case 'fuyoukoujo': case 'haigusha':
+      return {
+        checklist: [
+          '扶養している方(親・配偶者)に、今年の収入がラインを超えたことを伝える',
+          '扶養している方の勤務先に提出している「扶養控除等(異動)申告書」の訂正が必要か確認してもらう',
+          '年末調整の時期(11〜12月頃)までに伝えれば、通常はそこで清算できる',
+          '掛け持ちで年間20万円を超える副業収入がある場合、自分自身の確定申告が必要になることがある'
+        ],
+        impactLabel: fmtYen(Math.min(Math.max(excess,0)>0?630000:0,630000)*0.2) + '前後/年(扶養している方の負担)',
+        deadline: '年末調整の書類提出期限まで(勤務先による、通常11月頃)'
+      };
+    case 'shakaihoken130':
+      return {
+        checklist: [
+          '扶養している方の勤務先(健康保険組合)に「被扶養者異動届」の提出が必要になるので、早めに伝える',
+          '扶養から外れたら、自分の勤務先の社会保険に加入するか、市区町村で国民健康保険の加入手続きをする',
+          '国民年金は第1号被保険者としての届出が必要(学生なら学生納付特例の申請も忘れずに)',
+          '手続きが遅れると、扶養から外れた期間の医療費を後から精算する必要が出ることがあるので注意'
+        ],
+        impactLabel: '国民健康保険料は自治体・前年所得で変動(学生納付特例利用なら年金は実質0円)',
+        deadline: '扶養から外れた事実発生からできるだけ早く(目安5日〜14日以内、健保組合による)'
+      };
+    case 'shotokuzei':
+      return {
+        checklist: [
+          '通常は勤務先の年末調整で自動的に精算されるので、追加の手続きは基本的に不要',
+          '2箇所以上のバイト先がある場合、メインでない方(従たる給与)の収入が年間20万円を超えると確定申告が必要',
+          '確定申告が必要な場合は、翌年2/16頃〜3/15の期間に税務署または国税庁のサイトから申告する'
+        ],
+        impactLabel: fmtYen(Math.max(excess,0)*0.05105) + '前後/年',
+        deadline: '確定申告が必要な場合は翌年3/15まで'
+      };
+    default:
+      return { checklist: ['詳細は国税庁・日本年金機構の公式情報を確認してください'], impactLabel: '-', deadline: null };
+  }
+}
+
+function renderOveragePage(){
+  const container = document.getElementById('overage-content');
+  if(!container) return;
+  const agg = computeAnnualAggregates();
+  const walls = generateWalls();
+  const exceeded = walls.filter(w=>{
+    const base = w.basis==='wagePlusCommute' ? agg.totalWithCommute : agg.taxableBasisTotal;
+    return base >= w.amount;
+  });
+  if(exceeded.length===0){
+    container.innerHTML = '<div class="panel"><div class="empty">現在、超えている壁はありません。引き続き「年間・壁管理」タブで進み具合を確認してください。</div></div>';
+    return;
+  }
+  container.innerHTML = exceeded.map(w=>{
+    const base = w.basis==='wagePlusCommute' ? agg.totalWithCommute : agg.taxableBasisTotal;
+    const excess = base - w.amount;
+    const info = getActionInfo(w.key, excess);
+    const checklistHtml = info.checklist.map((item,i)=>{
+      const checked = !!(STATE.overageChecklist[w.key] && STATE.overageChecklist[w.key][i]);
+      return `<label style="display:flex; align-items:flex-start; gap:8px; margin-bottom:8px; font-size:13px; cursor:pointer;">
+        <input type="checkbox" data-overage-check="${w.key}" data-overage-idx="${i}" ${checked?'checked':''} style="margin-top:3px; width:auto;">
+        <span style="${checked?'text-decoration:line-through; color:var(--ink-soft);':''}">${item}</span>
+      </label>`;
+    }).join('');
+    return `<div class="panel" style="background:#FFF9F0; border-color:var(--gold);">
+      <h2 style="color:var(--danger);">⚠ ${w.name}を超えています <span class="tag">${(w.amount/10000).toFixed(0)}万円ライン</span></h2>
+      <div class="stat-grid" style="margin-bottom:14px;">
+        <div class="stat"><div class="label">超過額</div><div class="value num" style="color:var(--danger);">${fmtYen(excess)}</div></div>
+        <div class="stat"><div class="label">概算の負担増</div><div class="value" style="font-size:14px; color:var(--gold);">${info.impactLabel}</div></div>
+      </div>
+      <div class="foot-note" style="margin-bottom:10px; font-weight:700; color:var(--ink);">やることチェックリスト</div>
+      ${checklistHtml}
+      ${info.deadline ? `<div class="foot-note" style="margin-top:8px; color:var(--danger); font-weight:700;">期限の目安: ${info.deadline}</div>` : ''}
+      <div class="foot-note" style="margin-top:10px;">※ あくまで一般的な目安です。正確な手続き・金額は勤務先の担当者や自治体、国税庁・日本年金機構の窓口でご確認ください。</div>
+    </div>`;
+  }).join('');
+
+  container.querySelectorAll('[data-overage-check]').forEach(cb=>{
+    cb.addEventListener('change', async ()=>{
+      const key = cb.dataset.overageCheck;
+      const idx = Number(cb.dataset.overageIdx);
+      if(!STATE.overageChecklist[key]) STATE.overageChecklist[key] = {};
+      STATE.overageChecklist[key][idx] = cb.checked;
+      await saveJSON('overageChecklist', STATE.overageChecklist);
+      renderOveragePage();
+    });
+  });
+}
+
+
+function renderAnnualPage(){
+  const agg = computeAnnualAggregates();
+  const { year, shiftTotal, commuteTotal, commuteTaxableTotal, perJobTotals, actualTotal, actualCommuteTotal,
+    total, totalWithCommute, pace, projection, monthsElapsed, commutePaceAnnual,
+    taxableBasisTotal, taxableBasisProjection } = agg;
+  document.getElementById('year-tag').textContent = year+'年';
 
   document.getElementById('a-total').textContent = fmtYen(total);
   document.getElementById('a-pace').textContent = fmtYen(pace)+' /月';
@@ -1065,11 +1208,6 @@ function renderAnnualPage(){
     const jobBreakdown = perJobTotals.map(j=>`${j.name} ${fmtYen(j.wage)}`).join(' + ');
     breakdownEl.innerHTML = `内訳(実際の支払日ベース・全バイト先合算): ${jobBreakdown || 'シフト分 '+fmtYen(shiftTotal)} ＋ 受取実績(手入力)分 ${fmtYen(actualTotal)}`;
   }
-
-  const commutePaceAnnual = (commuteTotal+actualCommuteTotal)/monthsElapsed*12;
-  const commuteTaxablePaceAnnual = commuteTaxableTotal/monthsElapsed*12;
-  const taxableBasisTotal = total + commuteTaxableTotal;
-  const taxableBasisProjection = projection + commuteTaxablePaceAnnual;
 
   const commuteNoteEl = document.getElementById('a-commute-note');
   if(commuteNoteEl){
@@ -1103,10 +1241,11 @@ function renderAnnualPage(){
 }
 
 function renderSettingsPage(){
+  document.getElementById('s-age').value = (STATE.settings.profile.age ?? 20);
   document.getElementById('s-is-student').value = String(STATE.settings.profile.isStudent);
   document.getElementById('s-gakusei-tokurei').value = String(STATE.settings.profile.usesGakuseiTokurei);
   document.getElementById('s-dependent-tax').value = String(STATE.settings.profile.dependentTax);
-  document.getElementById('s-dependent-relationship').value = STATE.settings.profile.dependentRelationship || 'student_child';
+  document.getElementById('s-dependent-relationship').value = STATE.settings.profile.dependentRelationship || 'other';
   document.getElementById('s-dependent-shaho').value = String(STATE.settings.profile.dependentSocialInsurance);
   document.getElementById('s-gakusei-tokurei-wrap').style.display = STATE.settings.profile.isStudent ? '' : 'none';
   document.getElementById('s-dependent-relationship-wrap').style.display = STATE.settings.profile.dependentTax ? '' : 'none';
@@ -1260,7 +1399,7 @@ function renderJobSwitcher(){
   const bar = document.getElementById('job-switcher-bar');
   const sel = document.getElementById('global-job-select');
   if(!bar || !sel) return;
-  bar.style.display = (STATE.activeTab==='settings' || STATE.activeTab==='annual') ? 'none' : 'flex';
+  bar.style.display = (STATE.activeTab==='settings' || STATE.activeTab==='annual' || STATE.activeTab==='overage') ? 'none' : 'flex';
   sel.innerHTML = STATE.jobs.map(j=>`<option value="${j.id}" ${j.id===STATE.activeJobId?'selected':''}>${j.name}</option>`).join('');
 }
 
@@ -1308,6 +1447,7 @@ function renderAll(){
   renderActualPage();
   renderCyclePage();
   renderAnnualPage();
+  renderOveragePage();
   renderSettingsPage();
 }
 
@@ -1426,6 +1566,18 @@ function bindStringSetting(id, path){
     renderAll();
   });
 }
+function bindNumberSetting(id, path){
+  document.getElementById(id).addEventListener('change', async (e)=>{
+    const val = Number(e.target.value)||0;
+    const parts = path.split('.');
+    let obj = STATE.settings;
+    for(let i=0;i<parts.length-1;i++) obj = obj[parts[i]];
+    obj[parts[parts.length-1]] = val;
+    await saveJSON('settings', STATE.settings);
+    renderAll();
+  });
+}
+bindNumberSetting('s-age','profile.age');
 bindBoolSetting('s-is-student','profile.isStudent');
 bindBoolSetting('s-gakusei-tokurei','profile.usesGakuseiTokurei');
 bindBoolSetting('s-dependent-tax','profile.dependentTax');
@@ -1484,6 +1636,7 @@ document.getElementById('btn-reset-all').addEventListener('click', async ()=>{
   STATE.holidays = Object.fromEntries(DEFAULT_HOLIDAYS);
   STATE.actualPayments = [];
   STATE.cycleCorrections = {};
+  STATE.overageChecklist = {};
   STATE.jobs = JSON.parse(JSON.stringify(DEFAULT_JOBS));
   STATE.activeJobId = STATE.jobs[0].id;
   await saveJSON('shifts', STATE.shifts);
@@ -1491,8 +1644,7 @@ document.getElementById('btn-reset-all').addEventListener('click', async ()=>{
   await saveJSON('holidays', STATE.holidays);
   await saveJSON('actualPayments', STATE.actualPayments);
   await saveJSON('cycleCorrections', STATE.cycleCorrections);
-  await saveJSON('jobs', STATE.jobs);
-  await saveJSON('activeJobId', STATE.activeJobId);
+  await saveJSON('overageChecklist', STATE.overageChecklist);
   renderAll();
 });
 
@@ -1510,6 +1662,7 @@ document.getElementById('btn-export').addEventListener('click', ()=>{
     shifts: STATE.shifts,
     actualPayments: STATE.actualPayments,
     cycleCorrections: STATE.cycleCorrections,
+    overageChecklist: STATE.overageChecklist,
     jobs: STATE.jobs,
     activeJobId: STATE.activeJobId,
     settings: {
@@ -1545,6 +1698,7 @@ document.getElementById('file-import').addEventListener('change', (e)=>{
       STATE.shifts = data.shifts || [];
       STATE.actualPayments = data.actualPayments || [];
       STATE.cycleCorrections = data.cycleCorrections || {};
+      STATE.overageChecklist = data.overageChecklist || {};
       if(data.jobs && data.jobs.length) STATE.jobs = data.jobs;
       if(data.activeJobId) STATE.activeJobId = data.activeJobId;
       if(data.settings){
@@ -1556,6 +1710,7 @@ document.getElementById('file-import').addEventListener('change', (e)=>{
       await saveJSON('holidays', STATE.holidays);
       await saveJSON('actualPayments', STATE.actualPayments);
       await saveJSON('cycleCorrections', STATE.cycleCorrections);
+      await saveJSON('overageChecklist', STATE.overageChecklist);
       await saveJSON('jobs', STATE.jobs);
       await saveJSON('activeJobId', STATE.activeJobId);
       renderAll();
@@ -1575,16 +1730,22 @@ async function hydrateStateFromStorage(){
   const savedHolidays = await loadJSON('holidays', null);
   const savedActual = await loadJSON('actualPayments', null);
   const savedCycleCorr = await loadJSON('cycleCorrections', null);
+  const savedOverageChecklist = await loadJSON('overageChecklist', null);
   const savedJobs = await loadJSON('jobs', null);
   const savedActiveJobId = await loadJSON('activeJobId', null);
 
   STATE.shifts = savedShifts || [];
   STATE.settings = savedSettings || JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
   if(!STATE.settings.profile) STATE.settings.profile = JSON.parse(JSON.stringify(DEFAULT_SETTINGS.profile));
-  if(!STATE.settings.profile.dependentRelationship) STATE.settings.profile.dependentRelationship = 'student_child';
+  if(!STATE.settings.profile.dependentRelationship) STATE.settings.profile.dependentRelationship = 'other';
+  if(STATE.settings.profile.dependentRelationship === 'student_child') STATE.settings.profile.dependentRelationship = 'other';
+  if(STATE.settings.profile.age === undefined || STATE.settings.profile.age === null){
+    STATE.settings.profile.age = STATE.settings.profile.isStudent ? 20 : 35;
+  }
   STATE.holidays = savedHolidays || Object.fromEntries(DEFAULT_HOLIDAYS);
   STATE.actualPayments = savedActual || [];
   STATE.cycleCorrections = savedCycleCorr || {};
+  STATE.overageChecklist = savedOverageChecklist || {};
   STATE.jobs = (savedJobs && savedJobs.length) ? savedJobs : JSON.parse(JSON.stringify(DEFAULT_JOBS));
   // migrate: fill in cycle settings for jobs saved before this feature existed
   STATE.jobs.forEach(job=>{
