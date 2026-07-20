@@ -9,139 +9,229 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0E4B44">
 <title>バイト給与・税金トラッカー</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg: #F1F5F4;
-    --panel: #FFFFFF;
-    --ink: #16302B;
-    --ink-soft: #4B655F;
-    --line: #DCE6E2;
-    --teal: #0E4B44;
-    --teal-deep: #0A332E;
+    --bg: #F2F2F7;
+    --panel: rgba(255,255,255,0.78);
+    --panel-solid: #FFFFFF;
+    --ink: #1C1C1E;
+    --ink-soft: #6E6E73;
+    --line: rgba(60,60,67,0.13);
+    --teal: #0E6B5C;
+    --teal-deep: #0A4A40;
     --gold: #B8892B;
-    --gold-soft: #F1E3C6;
-    --danger: #B4432E;
-    --good: #2E7D5B;
-    --radius: 14px;
+    --gold-soft: #F5EAD3;
+    --danger: #E0402D;
+    --danger-soft: #FBEAE7;
+    --good: #2E9B5F;
+    --radius-lg: 20px;
+    --radius-md: 14px;
+    --radius-sm: 10px;
+    --shadow-card: 0 1px 2px rgba(0,0,0,0.04), 0 8px 24px -12px rgba(0,0,0,0.12);
+    --shadow-chrome: 0 1px 0 rgba(0,0,0,0.05), 0 8px 20px -14px rgba(0,0,0,0.18);
+    --ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   }
-  *{box-sizing:border-box;}
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg: #000000;
+      --panel: rgba(28,28,30,0.72);
+      --panel-solid: #1C1C1E;
+      --ink: #F2F2F7;
+      --ink-soft: #98989D;
+      --line: rgba(255,255,255,0.14);
+      --teal: #3DD9BE;
+      --teal-deep: #7FE9D4;
+      --gold: #E3B863;
+      --gold-soft: rgba(227,184,99,0.16);
+      --danger: #FF6961;
+      --danger-soft: rgba(255,105,97,0.14);
+      --good: #4CD97B;
+      --shadow-card: 0 1px 2px rgba(0,0,0,0.3), 0 10px 28px -14px rgba(0,0,0,0.6);
+      --shadow-chrome: 0 1px 0 rgba(255,255,255,0.04), 0 8px 20px -14px rgba(0,0,0,0.6);
+    }
+  }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
+  html{ font: 100%/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Segoe UI", sans-serif; }
   body{
     margin:0;
     background: var(--bg);
     color: var(--ink);
-    font-family:'Zen Kaku Gothic New', sans-serif;
-    padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+    padding: 0 max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    transition: background-color .25s var(--ease-out), color .25s var(--ease-out);
   }
-  .num{ font-family:'JetBrains Mono', monospace; }
+  .num{ font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
   .wrap{ max-width: 880px; margin: 0 auto; }
+
+  /* ---- sticky translucent chrome (header + tabs + job switcher) ---- */
+  .app-chrome{
+    position: sticky; top:0; z-index: 20;
+    margin: 0 -16px; padding: max(14px, env(safe-area-inset-top)) 16px 10px;
+    background: rgba(242,242,247,0.75);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    box-shadow: var(--shadow-chrome);
+  }
+  @media (prefers-color-scheme: dark){
+    .app-chrome{ background: rgba(0,0,0,0.72); }
+  }
+  @supports not (backdrop-filter: blur(1px)){
+    .app-chrome{ background: var(--bg); }
+  }
 
   header.top{
     display:flex; align-items:baseline; justify-content:space-between;
-    margin-bottom: 18px; flex-wrap:wrap; gap:8px;
+    margin-bottom: 12px; flex-wrap:wrap; gap:6px;
   }
   header.top h1{
-    font-size: 20px; font-weight:900; margin:0; letter-spacing:.02em;
-    color: var(--teal-deep);
+    font-size: 21px; font-weight:800; margin:0; letter-spacing:-0.01em;
+    color: var(--ink);
   }
-  header.top .sub{ font-size:12px; color: var(--ink-soft); }
+  header.top .sub{ font-size:12px; color: var(--ink-soft); letter-spacing:0; }
 
+  /* ---- segmented-control style tab bar ---- */
   nav.tabs{
-    display:flex; gap:4px; margin-bottom:18px;
-    border-bottom: 1px solid var(--line);
+    position:relative;
+    display:flex; gap:2px; margin-bottom:10px;
+    background: rgba(120,120,128,0.12);
+    border-radius: var(--radius-md);
+    padding: 3px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  nav.tabs::-webkit-scrollbar{ display:none; }
+  .tab-indicator{
+    position:absolute; top:3px; bottom:3px; left:3px; width:0;
+    background: var(--panel-solid);
+    border-radius: calc(var(--radius-md) - 3px);
+    box-shadow: 0 1px 1px rgba(0,0,0,0.06), 0 3px 8px rgba(0,0,0,0.10);
+    transition: transform .38s var(--ease-spring), width .38s var(--ease-spring);
+    z-index:0;
   }
   nav.tabs button{
-    appearance:none; border:none; background:transparent;
-    padding: 10px 14px; font-size:13.5px; font-weight:700; color: var(--ink-soft);
-    cursor:pointer; border-bottom: 2px solid transparent; font-family:inherit;
-    transition: color .15s, border-color .15s;
+    position:relative; z-index:1;
+    appearance:none; border:none; background:transparent; flex:0 0 auto;
+    padding: 8px 13px; font-size:13px; font-weight:600; color: var(--ink-soft);
+    cursor:pointer; font-family:inherit; border-radius: calc(var(--radius-md) - 3px);
+    transition: color .2s var(--ease-out);
+    white-space: nowrap;
   }
-  nav.tabs button.active{ color: var(--teal-deep); border-bottom-color: var(--gold); }
-  nav.tabs button:hover{ color: var(--teal-deep); }
+  nav.tabs button.active{ color: var(--ink); }
+  nav.tabs button:active{ transform: scale(0.96); transition: transform .1s var(--ease-out); }
+
+  #job-switcher-bar{ padding: 2px 2px 4px; }
+  #job-switcher-bar label{ color: var(--ink-soft); font-weight:600; text-transform:none; }
 
   .panel{
-    background: var(--panel); border:1px solid var(--line); border-radius: var(--radius);
-    padding: 20px; margin-bottom: 16px;
+    background: var(--panel);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    border:1px solid var(--line); border-radius: var(--radius-lg);
+    padding: 18px; margin-bottom: 14px;
+    box-shadow: var(--shadow-card);
   }
-  .panel h2{ font-size:14px; margin:0 0 14px; color:var(--teal-deep); font-weight:700; }
+  @supports not (backdrop-filter: blur(1px)){
+    .panel{ background: var(--panel-solid); }
+  }
+  .panel h2{ font-size:15px; margin:0 0 12px; color:var(--ink); font-weight:700; letter-spacing:-0.005em; }
   .panel h2 .tag{
     display:inline-block; font-size:10.5px; font-weight:700; color:var(--gold);
-    background: var(--gold-soft); padding:2px 7px; border-radius:20px; margin-left:8px; vertical-align:middle;
+    background: var(--gold-soft); padding:3px 8px; border-radius:20px; margin-left:6px; vertical-align:middle;
   }
 
-  .grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap:12px; }
-  label{ display:block; font-size:11.5px; color:var(--ink-soft); margin-bottom:4px; font-weight:700;}
-  input[type=number], input[type=date], input[type=time]{
-    width:100%; padding:8px 9px; border:1px solid var(--line); border-radius:8px;
-    font-size:14px; font-family:'JetBrains Mono', monospace; background:#FBFDFC; color:var(--ink);
+  .grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap:10px; }
+  label{ display:block; font-size:11.5px; color:var(--ink-soft); margin-bottom:4px; font-weight:600; letter-spacing:0.01em; }
+
+  input[type=number], input[type=date], input[type=time], input[type=month], input[type=text]{
+    width:100%; padding:9px 10px; border:1px solid var(--line); border-radius: var(--radius-sm);
+    font-size:15px; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    background: rgba(120,120,128,0.08); color: var(--ink);
+    transition: border-color .2s var(--ease-out), box-shadow .2s var(--ease-out), background-color .2s var(--ease-out);
   }
+  input[type=text]{ font-family: inherit; }
   select{
-    width:100%; padding:8px 30px 8px 10px; border:1px solid var(--line); border-radius:9px;
-    font-size:14px; font-family:'JetBrains Mono', monospace; background:#FBFDFC; color:var(--ink);
+    width:100%; padding:9px 30px 9px 11px; border:1px solid var(--line); border-radius: var(--radius-sm);
+    font-size:15px; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    background-color: rgba(120,120,128,0.08); color: var(--ink);
     appearance:none; -webkit-appearance:none; -moz-appearance:none;
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%234B655F' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236E6E73' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
     background-repeat:no-repeat; background-position: right 10px center;
-    cursor:pointer; transition: border-color .15s, box-shadow .15s, background-color .15s;
+    cursor:pointer; transition: border-color .2s var(--ease-out), box-shadow .2s var(--ease-out), background-color .2s var(--ease-out);
   }
-  select:hover{ border-color: var(--gold); background-color:#fff; }
-  select:focus{ outline:none; border-color: var(--gold); box-shadow: 0 0 0 3px rgba(184,137,43,.18); }
-  input:focus, select:focus{ outline:2px solid var(--gold); outline-offset:1px; }
+  select:hover{ border-color: var(--gold); }
+  select:focus{ outline:none; border-color: var(--gold); box-shadow: 0 0 0 4px rgba(184,137,43,.18); }
+  input:focus{ outline:none; border-color: var(--gold); box-shadow: 0 0 0 4px rgba(184,137,43,.18); }
 
   .row-field{ margin-bottom:10px; }
 
   button.btn{
-    appearance:none; border:none; cursor:pointer; font-family:inherit; font-weight:700;
-    padding:10px 18px; border-radius:9px; font-size:13.5px; background:var(--teal); color:#fff;
-    transition: background .15s;
+    appearance:none; border:none; cursor:pointer; font-family:inherit; font-weight:600;
+    padding:10px 18px; border-radius: var(--radius-sm); font-size:14px; background:var(--teal); color:#fff;
+    transition: background-color .2s var(--ease-out), transform .1s var(--ease-out);
+    letter-spacing:0;
   }
   button.btn:hover{ background:var(--teal-deep); }
+  button.btn:active{ transform: scale(0.96); }
   button.btn.ghost{
-    background:transparent; color:var(--danger); border:1px solid var(--line); padding:5px 10px; font-size:12px;
+    background: rgba(224,64,45,0.08); color:var(--danger); border:none; padding:6px 12px; font-size:12.5px;
   }
-  button.btn.ghost:hover{ background:#FBEDE9; }
-  button.btn.small{ padding:6px 12px; font-size:12px; }
+  button.btn.ghost:hover{ background: var(--danger-soft); }
+  button.btn.ghost:active{ transform: scale(0.95); }
+  button.btn.small{ padding:7px 13px; font-size:12.5px; }
   .quick-shift-btn{
-    appearance:none; border:1px solid var(--line); background:#FBFDFC; color:var(--teal-deep);
-    padding:6px 13px; border-radius:20px; font-size:12.5px; font-weight:700; cursor:pointer;
-    transition: background .15s, border-color .15s;
+    appearance:none; border:none; background: rgba(120,120,128,0.12); color: var(--ink);
+    padding:7px 14px; border-radius:20px; font-size:12.5px; font-weight:600; cursor:pointer;
+    transition: background-color .2s var(--ease-out), transform .1s var(--ease-out);
   }
-  .quick-shift-btn:hover{ background: var(--gold-soft); border-color: var(--gold); }
+  .quick-shift-btn:hover{ background: var(--gold-soft); color: var(--gold); }
+  .quick-shift-btn:active{ transform: scale(0.95); }
 
   table{ width:100%; border-collapse:collapse; font-size:13px; }
-  th{ text-align:left; color:var(--ink-soft); font-size:11px; padding:6px 8px; border-bottom:1px solid var(--line); }
-  td{ padding:8px; border-bottom:1px solid #EEF2F0; }
+  th{ text-align:left; color:var(--ink-soft); font-size:11px; font-weight:600; padding:7px 8px; border-bottom:1px solid var(--line); }
+  td{ padding:9px 8px; border-bottom:1px solid var(--line); }
   tr:last-child td{ border-bottom:none; }
-  td.num, th.num{ text-align:right; font-family:'JetBrains Mono', monospace; }
+  td.num, th.num{ text-align:right; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
 
-  .stat-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:6px; }
+  .stat-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:6px; }
   .stat{
-    background:#FBFDFC; border:1px solid var(--line); border-radius:10px; padding:12px 14px;
+    background: rgba(120,120,128,0.08); border:1px solid transparent; border-radius: var(--radius-sm); padding:12px 14px;
   }
-  .stat .label{ font-size:11px; color:var(--ink-soft); font-weight:700; margin-bottom:4px;}
-  .stat .value{ font-size:19px; font-weight:700; color:var(--teal-deep); }
+  .stat .label{ font-size:11px; color:var(--ink-soft); font-weight:600; margin-bottom:4px;}
+  .stat .value{ font-size:19px; font-weight:700; color:var(--ink); letter-spacing:-0.01em; }
   .stat .value.gold{ color:var(--gold); }
 
   .bar-wrap{ margin-bottom:16px; }
-  .bar-head{ display:flex; justify-content:space-between; font-size:12.5px; margin-bottom:5px; }
+  .bar-head{ display:flex; justify-content:space-between; font-size:12.5px; margin-bottom:6px; }
   .bar-head .name{ font-weight:700; color:var(--ink); }
-  .bar-head .nums{ font-family:'JetBrains Mono', monospace; color:var(--ink-soft); }
-  .bar-track{ height:9px; background:#E7EEEB; border-radius:6px; overflow:hidden; }
-  .bar-fill{ height:100%; border-radius:6px; background: var(--teal); transition: width .3s; }
+  .bar-head .nums{ font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; color:var(--ink-soft); }
+  .bar-track{ height:8px; background: rgba(120,120,128,0.16); border-radius:6px; overflow:hidden; }
+  .bar-fill{ height:100%; border-radius:6px; background: var(--teal); transition: width .5s var(--ease-spring); }
   .bar-fill.warn{ background: var(--gold); }
   .bar-fill.danger{ background: var(--danger); }
-  .bar-note{ font-size:11px; color:var(--ink-soft); margin-top:4px; }
+  .bar-note{ font-size:11px; color:var(--ink-soft); margin-top:5px; line-height:1.5; }
 
   .cycle-nav{ display:flex; align-items:center; gap:10px; margin-bottom:14px; }
-  .cycle-nav .label{ font-size:13px; font-weight:700; color:var(--teal-deep); flex:1; }
+  .cycle-nav .label{ font-size:13px; font-weight:700; color:var(--ink); flex:1; }
 
   select.cycle-select{ max-width:260px; }
 
-  .empty{ text-align:center; color:var(--ink-soft); font-size:13px; padding:20px 0; }
+  .empty{ text-align:center; color:var(--ink-soft); font-size:13px; padding:22px 0; }
 
-  .foot-note{ font-size:11px; color:var(--ink-soft); line-height:1.6; margin-top:4px; }
+  .foot-note{ font-size:11.5px; color:var(--ink-soft); line-height:1.6; margin-top:4px; }
   .divider{ height:1px; background:var(--line); margin:16px 0; }
+
+  /* subtle rise-in for tab content */
+  .tabpage{ animation: rise-in .32s var(--ease-out); }
+  @keyframes rise-in{
+    from{ opacity:0; transform: translateY(4px); }
+    to{ opacity:1; transform: translateY(0); }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *, *::before, *::after{ animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+  }
 
   @media (max-width:520px){
     .grid{ grid-template-columns: 1fr 1fr; }
@@ -151,23 +241,26 @@
 <body>
 <div class="wrap">
 
-  <header class="top">
-    <h1>💼 バイト給与トラッカー</h1>
-    <div class="sub">複数バイト先 / 時間帯別時給 / 通勤費 / 年収の壁 を自動管理</div>
-  </header>
+  <div class="app-chrome">
+    <header class="top">
+      <h1>💼 バイト給与トラッカー</h1>
+      <div class="sub">複数バイト先 / 時間帯別時給 / 通勤費 / 年収の壁 を自動管理</div>
+    </header>
 
-  <nav class="tabs" id="tabs">
-    <button data-tab="entry" class="active">シフト入力</button>
-    <button data-tab="actual">受取実績</button>
-    <button data-tab="cycle">給与サイクル</button>
-    <button data-tab="annual">年間・壁管理</button>
-    <button data-tab="overage">壁が近い/超過</button>
-    <button data-tab="settings">設定</button>
-  </nav>
+    <nav class="tabs" id="tabs">
+      <div class="tab-indicator" id="tab-indicator"></div>
+      <button data-tab="entry" class="active">シフト入力</button>
+      <button data-tab="actual">受取実績</button>
+      <button data-tab="cycle">給与サイクル</button>
+      <button data-tab="annual">年間・壁管理</button>
+      <button data-tab="overage">壁が近い/超過</button>
+      <button data-tab="settings">設定</button>
+    </nav>
 
-  <div id="job-switcher-bar" style="margin-bottom:16px; display:flex; align-items:center; gap:10px;">
-    <label style="margin:0; white-space:nowrap; font-size:12px;">バイト先:</label>
-    <select id="global-job-select" style="max-width:260px;"></select>
+    <div id="job-switcher-bar" style="margin-bottom:2px; display:flex; align-items:center; gap:10px;">
+      <label style="margin:0; white-space:nowrap; font-size:12px;">バイト先:</label>
+      <select id="global-job-select" style="max-width:260px;"></select>
+    </div>
   </div>
 
   <!-- ENTRY TAB -->
@@ -813,7 +906,21 @@ function renderTabs(){
   ['entry','actual','cycle','annual','overage','settings'].forEach(t=>{
     document.getElementById('page-'+t).style.display = (t===STATE.activeTab)?'block':'none';
   });
+  positionTabIndicator();
 }
+
+function positionTabIndicator(){
+  const nav = document.getElementById('tabs');
+  const indicator = document.getElementById('tab-indicator');
+  if(!nav || !indicator) return;
+  const activeBtn = nav.querySelector('button.active');
+  if(!activeBtn) return;
+  const navRect = nav.getBoundingClientRect();
+  const btnRect = activeBtn.getBoundingClientRect();
+  indicator.style.width = btnRect.width + 'px';
+  indicator.style.transform = `translateX(${btnRect.left - navRect.left - 3}px)`;
+}
+window.addEventListener('resize', ()=>{ positionTabIndicator(); });
 
 function renderShiftPreview(){
   const date = document.getElementById('in-date').value;
