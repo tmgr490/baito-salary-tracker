@@ -250,10 +250,10 @@
     <nav class="tabs" id="tabs">
       <div class="tab-indicator" id="tab-indicator"></div>
       <button data-tab="entry" class="active">シフト入力</button>
-      <button data-tab="actual">受取実績</button>
       <button data-tab="cycle">給与サイクル</button>
       <button data-tab="annual">年間・壁管理</button>
       <button data-tab="overage">壁が近い/超過</button>
+      <button data-tab="actual">受取済み</button>
       <button data-tab="settings">設定</button>
     </nav>
 
@@ -1364,7 +1364,7 @@ function renderAnnualPage(){
   const breakdownEl = document.getElementById('a-breakdown');
   if(breakdownEl){
     const jobBreakdown = perJobTotals.map(j=>`${j.name} ${fmtYen(j.wage)}`).join(' + ');
-    breakdownEl.innerHTML = `内訳(実際の支払日ベース・全バイト先合算): ${jobBreakdown || 'シフト分 '+fmtYen(shiftTotal)} ＋ 受取実績(手入力)分 ${fmtYen(actualTotal)}`;
+    breakdownEl.innerHTML = `内訳(実際の支払日ベース・全バイト先合算): ${jobBreakdown || 'シフト分 '+fmtYen(shiftTotal)} ＋ 受取済み(手入力)分 ${fmtYen(actualTotal)}`;
   }
 
   const commuteNoteEl = document.getElementById('a-commute-note');
