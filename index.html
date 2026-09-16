@@ -679,6 +679,17 @@ body.setup-mode .toast{ bottom:20px; }
           <option value="">選択してください</option>
           <option value="true">はい</option><option value="false">いいえ</option>
         </select></div>
+      <div class="field" id="su-wrap-kinro" hidden><label for="su-kinro">勤労学生控除を申告している</label>
+        <select id="su-kinro">
+          <option value="">選択してください</option>
+          <option value="true">はい</option><option value="false">いいえ</option>
+        </select></div>
+      <div class="field"><label for="su-kyuchi">お住まいの級地区分</label>
+        <select id="su-kyuchi">
+          <option value="1">1級地（東京23区・政令指定都市など）</option>
+          <option value="2">2級地（中規模の市）</option>
+          <option value="3">3級地（町村部など）</option>
+        </select></div>
       <div class="field"><label for="su-dep-tax">誰かの税法上の扶養に入っている</label>
         <select id="su-dep-tax">
           <option value="">選択してください</option>
@@ -697,7 +708,9 @@ body.setup-mode .toast{ bottom:20px; }
     </div>
     <div class="note tight" style="margin-top:8px;">
       分からない項目は空欄のままでも進めます。その場合、その項目に関係する壁は表示されません。
-      あとから設定タブでいつでも変更できます。
+      あとから設定タブでいつでも変更できます。<br>
+      級地区分は住民税がかかり始める金額に影響します。東京23区や政令指定都市の多くは1級地です。
+      分からなければそのままで構いません。
     </div>
   </div>
 
@@ -937,6 +950,27 @@ body.setup-mode .toast{ bottom:20px; }
   </div>
 
   <div class="card">
+    <div class="card-head">
+      <h2>社会保険は年収だけでは決まりません</h2>
+      <span class="spacer"></span>
+      <span class="chip">月額・時間の判定</span>
+    </div>
+    <div class="note" style="margin-bottom:12px;">
+      扶養から外れるかは、健康保険組合が<b>直近3ヶ月の平均月収</b>で見ることが多く、
+      年間では基準未満でも月収が続けて超えると外されます。
+      加入義務のほうは<b>週の所定労働時間</b>が中心です。
+    </div>
+    <div id="si-monthly"></div>
+    <div class="hr"></div>
+    <div id="si-weekly"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>このアプリが見ていないお金</h2></div>
+    <div id="other-notes"></div>
+  </div>
+
+  <div class="card">
     <div class="card-head"><h2>超えた・近づいた時の対応</h2></div>
     <div class="note" style="margin-bottom:6px;">
       残りが20%を切った壁について、準備事項とやることを表示します。チェックは自動保存されます。
@@ -956,6 +990,16 @@ body.setup-mode .toast{ bottom:20px; }
       </div>
       <div class="field" id="wrap-tokurei"><label for="s-tokurei">学生納付特例を利用中</label>
         <select id="s-tokurei"><option value="">選択してください</option><option value="true">はい</option><option value="false">いいえ</option></select>
+      </div>
+      <div class="field" id="wrap-kinro"><label for="s-kinro">勤労学生控除を申告している</label>
+        <select id="s-kinro"><option value="">選択してください</option><option value="true">はい</option><option value="false">いいえ</option></select>
+      </div>
+      <div class="field"><label for="s-kyuchi">お住まいの級地区分</label>
+        <select id="s-kyuchi">
+          <option value="1">1級地（東京23区・政令指定都市など）</option>
+          <option value="2">2級地（中規模の市）</option>
+          <option value="3">3級地（町村部など）</option>
+        </select>
       </div>
       <div class="field"><label for="s-dep-tax">税法上の扶養に入っている</label>
         <select id="s-dep-tax"><option value="">選択してください</option><option value="true">はい</option><option value="false">いいえ</option></select>
@@ -984,7 +1028,12 @@ body.setup-mode .toast{ bottom:20px; }
       <b>19〜22歳という年齢だけ</b>で決まり、在学中かどうかは関係ありません。逆に学生納付特例や
       社会保険の学生除外は、年齢ではなく在学しているかで決まります。<br>
       「扶養している方の所得税率」は、壁を超えた時に<b>相手側</b>の税負担がどれだけ増えるかの概算に使います。
-      分からなければ10%のままで構いません。
+      分からなければ10%のままで構いません。<br>
+      <b>級地区分</b>は住民税の均等割がかかり始める金額に影響します。生活保護基準の区分で、
+      東京23区や政令指定都市の多くは1級地です。分からなければ1級地のままで構いません
+      （正確な区分はお住まいの市区町村のページで確認できます）。<br>
+      <b>勤労学生控除</b>は自動では適用されません。勤務先に出す「扶養控除等（異動）申告書」で
+      申告しているかどうかを選んでください。申告していると住民税の所得割が26万円分軽くなります。
     </div>
   </div>
 
@@ -1168,8 +1217,14 @@ const TAX_TABLE = {
   2025: {
     era: '令和7年分',
     kyuyoKojoMin: 650000,      // 給与所得控除の最低保障額
-    juuminzeiHikazei: 450000,  // 住民税 非課税限度額(合計所得・単身1級地)
+    /* 住民税の非課税限度額(単身・扶養なし)。
+       均等割は生活保護の級地区分で変わるが、所得割は全国共通。
+       均等割の限度額が所得割の限度額を超えることはないので、先に来るのは常に均等割。 */
+    juuminzeiKinto: { 1: 450000, 2: 415000, 3: 380000 },
+    juuminzeiShotokuwari: 450000,
+    juuminzeiHikazei: 450000,  // 互換のため残す(1級地の均等割と同じ)
     juuminzeiKiso: 430000,     // 住民税 基礎控除
+    kinroGakuseiLimit: 850000, // 勤労学生控除の合計所得要件
     shotokuzei:   1600000,     // 所得税が発生しない給与収入の上限
     juuminzei:    1100000,     // 住民税が発生しない給与収入の上限
     fuyou:        1230000,     // 扶養控除・配偶者控除の対象となる給与収入の上限
@@ -1182,8 +1237,11 @@ const TAX_TABLE = {
   2026: {
     era: '令和8年分',
     kyuyoKojoMin: 740000,
+    juuminzeiKinto: { 1: 450000, 2: 415000, 3: 380000 },
+    juuminzeiShotokuwari: 450000,
     juuminzeiHikazei: 450000,
     juuminzeiKiso: 430000,
+    kinroGakuseiLimit: 890000,
     shotokuzei:   1780000,
     juuminzei:    1190000,
     fuyou:        1360000,
@@ -1196,8 +1254,11 @@ const TAX_TABLE = {
   2027: {
     era: '令和9年分',
     kyuyoKojoMin: 740000,
+    juuminzeiKinto: { 1: 450000, 2: 415000, 3: 380000 },
+    juuminzeiShotokuwari: 450000,
     juuminzeiHikazei: 450000,
     juuminzeiKiso: 430000,
+    kinroGakuseiLimit: 890000,
     shotokuzei:   1780000,
     juuminzei:    1190000,
     fuyou:        1360000,
@@ -1227,6 +1288,9 @@ const SI = {
   /* 国民健康保険料のざっくり率（自治体差が大きいので目安） */
   kokuhoRate: 0.10
 };
+
+/* 勤労学生控除の控除額（所得税・住民税とも据置き） */
+const KINRO_GAKUSEI_KOJO = { shotokuzei: 270000, juuminzei: 260000 };
 
 const FUKKO = 1.021;          // 復興特別所得税
 const JUUMIN_RATE = 0.10;     // 住民税 所得割
@@ -1298,7 +1362,9 @@ const DEFAULT_PROFILE = {
   dependentTax: null,
   dependentSocialInsurance: null,
   dependentRelationship: 'other',
-  supporterTaxRate: 0.10
+  supporterTaxRate: 0.10,
+  kyuchi: 1,                 // 住民税の均等割の非課税限度額に効く生活保護の級地区分
+  usesKinroGakusei: null     // 勤労学生控除を申告しているか（学生のときだけ意味がある）
 };
 
 let STATE = {
@@ -1687,9 +1753,13 @@ function annualAggregate(year) {
   let firstPayMonth = null, lastPayMonth = null, lastReceivedMonth = null;
   let nextPay = null;
 
-  const bump = (month, label, wage) => {
+  const monthlyFull = {};   // 月 -> {wage, commute}  扶養の月額判定用（全バイト先合算）
+  const bump = (month, label, wage, commute) => {
     if (!monthly[month]) monthly[month] = {};
     monthly[month][label] = (monthly[month][label] || 0) + wage;
+    if (!monthlyFull[month]) monthlyFull[month] = { wage: 0, commute: 0 };
+    monthlyFull[month].wage += wage;
+    monthlyFull[month].commute += (commute || 0);
   };
 
   STATE.jobs.forEach((job) => {
@@ -1703,7 +1773,7 @@ function annualAggregate(year) {
 
       scheduledWage += eff.wage; scheduledCommute += eff.commute;
       jw += eff.wage; jc += eff.commute;
-      bump(m, job.name, eff.wage);
+      bump(m, job.name, eff.wage, eff.commute);
       if (firstPayMonth === null || m < firstPayMonth) firstPayMonth = m;
       if (lastPayMonth === null || m > lastPayMonth) lastPayMonth = m;
 
@@ -1725,7 +1795,7 @@ function annualAggregate(year) {
     const eom = new Date(y, m, 0);
     const label = (STATE.jobs.find((j) => j.id === p.jobId) || {}).name || '手入力';
     scheduledWage += p.taxable; scheduledCommute += (p.commute || 0);
-    bump(m, label, p.taxable);
+    bump(m, label, p.taxable, p.commute || 0);
     if (firstPayMonth === null || m < firstPayMonth) firstPayMonth = m;
     if (lastPayMonth === null || m > lastPayMonth) lastPayMonth = m;
     if (eom <= now) {
@@ -1758,7 +1828,7 @@ function annualAggregate(year) {
   const fullBasisProjection = projection + projectionCommute;
 
   return {
-    year, perJob, monthly,
+    year, perJob, monthly, monthlyFull,
     scheduledWage, scheduledCommute, receivedWage, receivedCommute,
     taxableCommute, exemptCommute: scheduledCommute - taxableCommute,
     pace, monthsElapsed, projection, projectionCommute,
@@ -1777,6 +1847,76 @@ function siWageRequirementActive(year) {
   return year <= abolish.getFullYear();
 }
 
+/* --------------------------------------------------------------------------
+   社会保険は「年収」だけでは決まらない
+
+   - 扶養から外れるかは、健保組合が直近3ヶ月の平均月収で見ることが多い。
+     年間で基準未満でも、月収が続けて超えると外される。
+     2026年4月からは労働契約の内容（時給×時間×日数）で年収を見積もる方式も加わった。
+   - 加入義務は週の所定労働時間20時間以上が中心。2026年10月に月8.8万円の
+     賃金要件が廃止されてからは、金額ではなく時間で決まる。
+   どちらも年間合計を見ているだけでは分からないので、別途計算して出す。
+   -------------------------------------------------------------------------- */
+
+/* バイト先ごとの週平均労働時間（直近 weeks 週の実績から） */
+function weeklyHoursByJob(weeks) {
+  const w = weeks || 8;
+  const now = new Date();
+  const from = new Date(now.getFullYear(), now.getMonth(), now.getDate() - w * 7);
+  return STATE.jobs.map((job) => {
+    const shifts = STATE.shifts.filter((s) => {
+      if (s.jobId !== job.id) return false;
+      const d = parseYMD(s.date);
+      return d >= from && d <= now;
+    });
+    const hours = shifts.reduce((a, s) => a + calcShift(s).hours, 0);
+    return { job, hours, weekly: hours / w, days: shifts.length };
+  }).filter((r) => r.days > 0);
+}
+
+/* 直近3ヶ月の平均月収（全バイト先合算・通勤手当込み）。
+   扶養の判定は通勤手当を含めた収入で見るため。 */
+function recentMonthlyAverage(agg, months) {
+  const n = months || 3;
+  const rows = Object.entries(agg.monthlyFull || {})
+    .map(([m, v]) => ({ m: Number(m), total: v.wage + v.commute }))
+    .filter((r) => r.total > 0)
+    .sort((a, b) => a.m - b.m);
+  if (!rows.length) return null;
+  const now = new Date();
+  const past = rows.filter((r) => !(agg.year === now.getFullYear() && r.m > now.getMonth() + 1));
+  const use = (past.length ? past : rows).slice(-n);
+  const avg = use.reduce((a, r) => a + r.total, 0) / use.length;
+  const max = use.reduce((a, r) => Math.max(a, r.total), 0);
+  return { avg, max, months: use.map((r) => r.m), count: use.length };
+}
+
+/* この人に適用される扶養の年収基準と、それに対応する月額基準 */
+function fuyouThreshold() {
+  const p = STATE.settings.profile;
+  const age = Number(p.age) || 0;
+  const rel = p.dependentRelationship || 'other';
+  const studentAge = rel !== 'spouse' && age >= 19 && age <= 22;
+  const annual = studentAge ? SI.fuyou150 : SI.fuyou130;
+  return { annual, monthly: Math.floor(annual / 12), studentAge };
+}
+
+/* 勤労学生控除が使える状態か。使えるなら関係する境目も返す。
+   在学していること・申告していること・合計所得が要件以下であることが条件。 */
+function kinroGakuseiInfo(year) {
+  const p = STATE.settings.profile;
+  const T = taxYearData(year);
+  if (p.isStudent !== true) return null;
+  if (p.usesKinroGakusei === false) return null;   // 申告していないと適用されない
+  return {
+    /* 控除が使える給与収入の上限 */
+    incomeLimit: T.kinroGakuseiLimit + T.kyuyoKojoMin,
+    /* 住民税の所得割が0で済む給与収入の上限
+       = 基礎控除43万 + 勤労学生控除26万 + 給与所得控除 */
+    shotokuwariFreeUpTo: T.juuminzeiKiso + KINRO_GAKUSEI_KOJO.juuminzei + T.kyuyoKojoMin
+  };
+}
+
 function generateWalls(year) {
   const p = STATE.settings.profile;
   const T = taxYearData(year);
@@ -1785,11 +1925,28 @@ function generateWalls(year) {
   const studentAge = rel !== 'spouse' && age >= 19 && age <= 22;
   const walls = [];
 
+  const kyuchi = Number(p.kyuchi) || 1;
+  const kintoLimit = (T.juuminzeiKinto || {})[kyuchi] || T.juuminzeiHikazei;
+  const juuminzeiWall = kintoLimit + T.kyuyoKojoMin;
+  const shotokuwariWall = T.juuminzeiShotokuwari + T.kyuyoKojoMin;
+  const gakusei = kinroGakuseiInfo(year);
   walls.push({
-    key: 'juuminzei', name: '住民税', amount: T.juuminzei, basis: 'wage',
-    note: `超えると翌年度から住民税がかかり始めます。最初に均等割+森林環境税の${yen(JUUMIN_KINTO)}、`
-        + `さらに超過が進むと超過額のおよそ10%が所得割として上乗せされます。`
-        + `（${T.era}の収入に対する住民税＝${year + 1}年度分。非課税限度額${man(T.juuminzeiHikazei)}＋給与所得控除${man(T.kyuyoKojoMin)}）`,
+    key: 'juuminzei', name: '住民税', amount: juuminzeiWall, basis: 'wage',
+    note: `超えると翌年度から住民税がかかり始めます。まず均等割＋森林環境税の${yen(JUUMIN_KINTO)}、`
+        + `さらに${man(shotokuwariWall)}を超えると所得割（およそ10%）が加わります。`
+        + (kyuchi !== 1
+            ? `<br>お住まいを<b>${kyuchi}級地</b>として計算しています。級地は市区町村ごとに決まっており、`
+              + `均等割の非課税限度額が変わります（1級地なら${man(T.juuminzeiKinto[1] + T.kyuyoKojoMin)}）。`
+            : `<br>均等割の非課税限度額は市区町村の級地区分で変わります。`
+              + `2級地なら${man(T.juuminzeiKinto[2] + T.kyuyoKojoMin)}、3級地なら${man(T.juuminzeiKinto[3] + T.kyuyoKojoMin)}と`
+              + `早くかかり始めます（設定タブで変更できます）。`)
+        + (gakusei
+            ? `<br><b>勤労学生控除（住民税${man(KINRO_GAKUSEI_KOJO.juuminzei)}）を申告しているため、`
+              + `所得割は${man(gakusei.shotokuwariFreeUpTo)}までかかりません。</b>`
+              + `均等割の${yen(JUUMIN_KINTO)}は${man(juuminzeiWall)}を超えた時点で発生します。`
+            : '')
+        + `<br>（${T.era}の収入に対する住民税＝${year + 1}年度分。`
+        + `非課税限度額${man(kintoLimit)}＋給与所得控除${man(T.kyuyoKojoMin)}）`,
     src: '総務省（個人住民税）',
     url: 'https://www.soumu.go.jp/main_sosiki/jichi_zeisei/czaisei/czaisei_seido/149767_03.html'
   });
@@ -1863,6 +2020,22 @@ function generateWalls(year) {
     });
   }
 
+  if (gakusei) {
+    walls.push({
+      key: 'kinrogakusei', name: '勤労学生控除', amount: gakusei.incomeLimit, basis: 'wage',
+      note: `${man(gakusei.incomeLimit)}（合計所得${man(T.kinroGakuseiLimit)}）を1円でも超えると、`
+          + `勤労学生控除が丸ごと使えなくなります。段階的に減る仕組みはありません。<br>`
+          + `${T.era}は基礎控除が${man(T.shotokuzei - T.kyuyoKojoMin)}まで引き上げられたため、`
+          + `<b>所得税への影響はありません</b>（控除がなくても${man(T.shotokuzei)}までは非課税）。`
+          + `効いてくるのは<b>住民税の所得割</b>で、控除があれば${man(gakusei.shotokuwariFreeUpTo)}まで0円です。<br>`
+          + `この控除は自動では適用されません。勤務先に出す「扶養控除等（異動）申告書」で申告するか、`
+          + `確定申告が必要です。`,
+      src: '国税庁 No.1175 勤労学生控除',
+      url: 'https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1175.htm',
+      cliff: true
+    });
+  }
+
   walls.push({
     key: 'shotokuzei', name: '所得税（自分）', amount: T.shotokuzei, basis: 'wage',
     note: `${T.era}はここまで自分の所得税がかかりません（給与所得控除${man(T.kyuyoKojoMin)}＋基礎控除${man(T.shotokuzei - T.kyuyoKojoMin)}）。`
@@ -1887,11 +2060,28 @@ function wallImpact(wall, excess, agg, year) {
 
   switch (wall.key) {
     case 'juuminzei': {
-      /* 均等割 + 所得割。課税標準 = 合計所得 - 住民税基礎控除。
-         非課税限度額(45万)と基礎控除(43万)の差の分だけ、超えた瞬間に課税標準が乗る。 */
-      const head = T.juuminzeiHikazei - T.juuminzeiKiso;
-      const shotokuwari = Math.max(0, (e + head) * JUUMIN_RATE - JUUMIN_CHOSEI);
-      return { amount: JUUMIN_KINTO + shotokuwari, who: '自分', exact: false };
+      /* 均等割と所得割は別々に判定する。
+         均等割 … 合計所得が級地別の限度額を超えたら定額
+         所得割 … 合計所得が45万を超えたうえで、所得控除を引いた残りに10%
+         勤労学生控除があると所得割だけ後ろにずれる。 */
+      const kyuchi = Number(p.kyuchi) || 1;
+      const kintoLimit = (T.juuminzeiKinto || {})[kyuchi] || T.juuminzeiHikazei;
+      const total = Math.max(0, agg.wageBasis - T.kyuyoKojoMin);   // 合計所得金額
+      const kinto = total > kintoLimit ? JUUMIN_KINTO : 0;
+
+      const gakusei = kinroGakuseiInfo(year);
+      const usesGakusei = !!gakusei && total <= T.kinroGakuseiLimit;
+      const kojo = T.juuminzeiKiso + (usesGakusei ? KINRO_GAKUSEI_KOJO.juuminzei : 0);
+      const shotokuwari = total > T.juuminzeiShotokuwari
+        ? Math.max(0, (total - kojo) * JUUMIN_RATE - JUUMIN_CHOSEI)
+        : 0;
+      return { amount: kinto + shotokuwari, who: '自分', exact: false, whole: true };
+    }
+    case 'kinrogakusei': {
+      /* 控除が消えると住民税の所得割が26万円分増える。
+         所得税側は基礎控除の引き上げで影響しない。 */
+      return { amount: KINRO_GAKUSEI_KOJO.juuminzei * JUUMIN_RATE,
+               who: '自分', cliff: true, exact: false };
     }
     case 'shakaihoken20h':
       /* 保険料は「超過額」ではなく収入全体にかかる */
@@ -1949,6 +2139,12 @@ function wallActions(key) {
       '扶養から外れたら、勤務先の社会保険に入るか、市区町村で国民健康保険の加入手続きをする',
       '国民年金は第1号被保険者としての届出が必要（学生なら学生納付特例の申請も忘れずに）',
       '手続きが遅れると、扶養から外れた期間の医療費を後から精算することになる場合があるので注意'
+    ]};
+    case 'kinrogakusei': return { deadline: '年末調整の書類提出期限まで（通常11月ごろ）', items: [
+      '勤務先に出す「扶養控除等（異動）申告書」の勤労学生の欄に記入する（自動では適用されません）',
+      '専門学校・各種学校の場合は対象かどうか学校に確認する（すべての学校が対象ではありません）',
+      '超えてしまった場合、住民税の所得割が26万円分の控除を失った分だけ増える（年2万6千円ほど）',
+      '所得税は基礎控除の引き上げで178万円まで非課税なので、超えても所得税への影響はない'
     ]};
     case 'shotokuzei': return { deadline: '確定申告が必要な場合は翌年3/15まで', items: [
       '通常は勤務先の年末調整で精算されるので、追加の手続きは基本的に不要',
@@ -2465,6 +2661,9 @@ function renderWalls(agg) {
     ? walls.map((w) => meterHTML(w, wallStatus(w, agg))).join('')
     : '<div class="empty">プロフィール設定により、現在該当する壁はありません</div>';
 
+  renderSocialInsuranceChecks(agg);
+  renderOtherNotes();
+
   /* 超過・接近時のアクション */
   const hot = walls.map((w) => ({ w, st: wallStatus(w, agg) }))
     .filter((x) => x.st.pct >= 0.8 || x.st.projPct >= 1);
@@ -2536,6 +2735,139 @@ function renderWalls(agg) {
   }).join('');
 }
 
+/* 月額判定と週20時間判定。年間合計のバーだけでは見えない部分を出す。 */
+function renderSocialInsuranceChecks(agg) {
+  const p = STATE.settings.profile;
+  const host = $('si-monthly');
+  const hostW = $('si-weekly');
+
+  /* --- 月額 --- */
+  if (p.dependentSocialInsurance !== true) {
+    host.innerHTML = '<div class="note tight">社会保険の扶養に入っていない設定のため、月額の判定は表示していません。</div>';
+  } else {
+    const th = fuyouThreshold();
+    const r = recentMonthlyAverage(agg, 3);
+    if (!r) {
+      host.innerHTML = `<div class="note tight">まだ支払い実績がないため、月額の平均を出せません。
+        （基準は月 <b>${yen(th.monthly)}</b>／年 ${man(th.annual)}）</div>`;
+    } else {
+      const pct = r.avg / th.monthly;
+      const level = pct >= 1 ? 'crit' : pct >= 0.9 ? 'warn' : 'good';
+      const label = pct >= 1 ? '基準を超えています'
+                  : pct >= 0.9 ? '基準に近づいています' : '余裕あり';
+      host.innerHTML = `
+        <div class="meter" style="padding-top:0;">
+          <div class="meter-head">
+            <span class="meter-name">直近${r.count}ヶ月の平均月収</span>
+            <span class="meter-limit tnum">基準 ${yen(th.monthly)}/月</span>
+            <span class="meter-val tnum">${yen(r.avg)}</span>
+          </div>
+          <div class="track"><div class="fill ${level === 'good' ? '' : level}"
+            style="width:${clamp(pct * 100, 0, 100).toFixed(1)}%"></div></div>
+          <div class="meter-foot s-${level}">${statusIcon(level)}<span>${label}</span>
+            <span style="margin-left:auto; color:var(--ink-2); font-weight:600;">${r.months.join('・')}月分</span>
+          </div>
+          <div class="meter-note">
+            年収${man(th.annual)}を12で割った <b>月 ${yen(th.monthly)}</b> が目安です。
+            ${th.studentAge ? '19〜22歳（配偶者を除く）は2025年10月以降の認定分から150万円が基準なので、月額も125,000円になります。' : ''}
+            健保組合は直近3ヶ月の平均で見ることが多く、<b>年間合計が基準未満でも、月収が続けて超えると扶養から外されます</b>。
+            繁忙期など一時的な増加なら事情を説明できる場合があるので、超えそうなときは早めに相談してください。
+            ${r.max > th.monthly ? `<br><b>この期間で最も高い月は ${yen(r.max)} でした。</b>` : ''}
+          </div>
+          <div class="meter-note" style="margin-top:6px;">
+            <b>2026年4月から</b>、労働契約の内容（時給・所定労働時間・日数）から年収を見積もる
+            「労働契約ベース」の判定も加わりました。シフトを増やす前に、契約上の条件が
+            基準を超えないか確認しておくと安心です。
+          </div>
+          <div class="meter-src">最終確認 ${TAX_VERIFIED} ・
+            <a href="https://www.nenkin.go.jp/service/kounen/tekiyo/hihokensha1/20141202.html"
+               target="_blank" rel="noopener" style="color:var(--brand); font-weight:700;">日本年金機構（被扶養者の収入要件） ↗</a></div>
+        </div>`;
+    }
+  }
+
+  /* --- 週の労働時間（加入義務は勤務先ごとに判定される） --- */
+  const rows = weeklyHoursByJob(8);
+  if (!rows.length) {
+    hostW.innerHTML = '<div class="note tight">直近8週間のシフトがないため、週の平均労働時間を出せません。</div>';
+    return;
+  }
+  const studentExempt = p.isStudent === true;
+  hostW.innerHTML = `
+    <div class="note" style="font-weight:700; color:var(--ink); margin-bottom:8px;">週の平均労働時間（直近8週間）</div>
+    ${rows.map((r) => {
+      const pct = r.weekly / 20;
+      const level = pct >= 1 ? (studentExempt ? 'warn' : 'crit') : pct >= 0.85 ? 'warn' : 'good';
+      return `<div class="meter">
+        <div class="meter-head">
+          <span class="meter-name">${esc(r.job.name)}</span>
+          <span class="meter-limit">基準 週20時間</span>
+          <span class="meter-val tnum">${r.weekly.toFixed(1)}時間/週</span>
+        </div>
+        <div class="track"><div class="fill ${level === 'good' ? '' : level}"
+          style="width:${clamp(pct * 100, 0, 100).toFixed(1)}%"></div></div>
+        <div class="meter-foot s-${level}">${statusIcon(level)}<span>${
+          pct >= 1 ? '週20時間を超えています' : pct >= 0.85 ? '週20時間に近づいています' : '余裕あり'
+        }</span></div>
+      </div>`;
+    }).join('')}
+    <div class="note tight" style="margin-top:8px;">
+      社会保険の加入義務は<b>勤務先ごと</b>に判定されるため、バイト先を分けて表示しています
+      （合算はしません）。2026年10月1日に月8.8万円の賃金要件が廃止され、以後は
+      週20時間以上・2ヶ月超の雇用見込み・従業員51人以上といった条件が中心になります。<br>
+      ここに出しているのは<b>実際に働いた時間の平均</b>で、判定に使われるのは
+      契約上の「所定労働時間」です。目安としてご覧ください。
+      ${studentExempt ? '<br><b>在学中の学生は、この加入義務の対象外（学生除外）です。</b>' : ''}
+    </div>`;
+}
+
+/* 壁として金額を追えないが、知らないと損をするもの */
+function renderOtherNotes() {
+  const p = STATE.settings.profile;
+  const items = [];
+
+  items.push(`<details class="acc"><summary>💴 家族手当・扶養手当（勤務先の制度）</summary>
+    <div class="acc-body"><div class="note">
+      会社によっては、配偶者や扶養家族の収入額に応じて<b>家族手当・扶養手当</b>を支給する制度があります。
+      その基準額（多くは103万円や130万円あたりに据え置かれたまま）を超えると手当が無くなることがあり、
+      <b>税金や社会保険より影響が大きい場合もあります</b>。
+      会社ごとの制度なのでこのアプリの壁には含まれていません。
+      心当たりがあれば、${p.dependentRelationship === 'spouse' ? '配偶者' : '扶養している方'}の勤務先の規定を確認してみてください。
+    </div></div></details>`);
+
+  items.push(`<details class="acc"><summary>🧾 雇用保険</summary>
+    <div class="acc-body"><div class="note">
+      週の所定労働時間20時間以上・31日以上の雇用見込みで加入します。金額の壁ではありませんが、
+      令和8年度の労働者負担は賃金の<b>0.5%</b>（一般の事業）なので、その分手取りが減ります。<br>
+      ${p.isStudent === true
+        ? '<b>昼間部の学生は原則として加入対象外です。</b>ただし休学中、夜間・定時制、卒業見込みで卒業後も続けて働く場合などは加入します。'
+        : '離職時の基本手当や教育訓練給付の対象になるため、加入は不利益ばかりではありません。'}
+    </div></div></details>`);
+
+  items.push(`<details class="acc"><summary>🏥 扶養から外れた後にかかるお金</summary>
+    <div class="acc-body"><div class="note">
+      扶養を外れると、自分で<b>国民健康保険</b>（または勤務先の社会保険）に入ります。
+      国民健康保険料は前年の所得をもとに市区町村ごとに計算されるため、超えた年はそれほど高くならないことが多い一方、
+      翌年に上がります。金額は自治体差が大きいので、お住まいの市区町村のページでご確認ください。<br>
+      <b>国民年金</b>は130万円の壁とは別の話です。20歳以上は納付義務があり、令和8年度は月額
+      ${yen(SI.nenkinMonthly)}（年 ${yen(SI.nenkinMonthly * 12)}）。
+      ${p.isStudent === true
+        ? '在学中なら<b>学生納付特例</b>で猶予できます（免除ではなく先送りで、追納は任意）。前年所得の基準は128万円＋扶養親族の数×38万円などが目安です。'
+        : '所得が低い場合は免除・猶予の制度があります。'}
+    </div></div></details>`);
+
+  items.push(`<details class="acc"><summary>📅 この壁トラッキングの前提</summary>
+    <div class="acc-body"><div class="note">
+      ・収入の年の帰属は<b>支払日</b>で判定しています（所得税法上、給与は支給日の属する年の収入）。<br>
+      ・住民税の非課税限度額は<b>扶養親族がいない単身者</b>の金額です。扶養している家族がいる場合は上がります。<br>
+      ・${STATE.activeYear}年分の${taxYearData(STATE.activeYear).era}として計算しています。
+      178万円などの金額は<b>令和8年分・令和9年分限りの時限措置</b>で、令和10年分以降は物価に応じて再設定される見込みです。<br>
+      ・障害者控除・ひとり親控除・寡婦控除など、該当すると非課税ラインが上がる控除には対応していません。
+    </div></div></details>`);
+
+  $('other-notes').innerHTML = items.join('');
+}
+
 function renderSettings() {
   const p = STATE.settings.profile;
   $('s-age').value = p.age ?? '';
@@ -2545,6 +2877,9 @@ function renderSettings() {
   $('s-rel').value = p.dependentRelationship || 'other';
   $('s-rate').value = String(p.supporterTaxRate ?? 0.10);
   $('s-dep-shaho').value = selVal(p.dependentSocialInsurance);
+  $('s-kinro').value = selVal(p.usesKinroGakusei);
+  $('s-kyuchi').value = String(p.kyuchi || 1);
+  $('wrap-kinro').style.display = p.isStudent === true ? '' : 'none';
   $('wrap-tokurei').style.display = p.isStudent === true ? '' : 'none';
   $('wrap-rel').style.display = p.dependentTax === true ? '' : 'none';
   $('wrap-rate').style.display = p.dependentTax === true ? '' : 'none';
@@ -3029,7 +3364,9 @@ const PROFILE_BINDINGS = [
   ['s-dep-tax', 'dependentTax', triState],
   ['s-rel', 'dependentRelationship', String],
   ['s-rate', 'supporterTaxRate', Number],
-  ['s-dep-shaho', 'dependentSocialInsurance', triState]
+  ['s-dep-shaho', 'dependentSocialInsurance', triState],
+  ['s-kinro', 'usesKinroGakusei', triState],
+  ['s-kyuchi', 'kyuchi', Number]
 ];
 PROFILE_BINDINGS.forEach(([id, key, cast]) => {
   $(id).addEventListener('change', async (e) => {
@@ -3648,6 +3985,7 @@ function renderSetup() {
 
   /* 条件付きの項目 */
   $('su-wrap-tokurei').hidden = $('su-student').value !== 'true';
+  $('su-wrap-kinro').hidden = $('su-student').value !== 'true';
   $('su-wrap-rel').hidden = $('su-dep-tax').value !== 'true';
 }
 
@@ -3678,6 +4016,8 @@ function commitSetupStep(step) {
     p.dependentTax              = triState($('su-dep-tax').value);
     p.dependentRelationship     = $('su-rel').value || 'other';
     p.dependentSocialInsurance  = triState($('su-dep-shaho').value);
+    p.usesKinroGakusei          = triState($('su-kinro').value);
+    p.kyuchi                    = Number($('su-kyuchi').value) || 1;
   }
 }
 
@@ -3702,6 +4042,8 @@ function fillSetupForm() {
   $('su-dep-tax').value    = selVal(p.dependentTax);
   $('su-rel').value        = p.dependentRelationship || 'other';
   $('su-dep-shaho').value  = selVal(p.dependentSocialInsurance);
+  $('su-kinro').value      = selVal(p.usesKinroGakusei);
+  $('su-kyuchi').value     = String(p.kyuchi || 1);
 }
 
 async function finishSetup(skipped) {
