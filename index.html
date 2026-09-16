@@ -10,6 +10,9 @@
 <meta name="theme-color" content="#0F6F63">
 <meta name="robots" content="noindex, nofollow">
 <meta name="description" content="バイトのシフトから給与と年収の壁を管理する、端末内で完結するツール">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <title>給与ノート</title>
 <style>
 /* ============================================================
@@ -503,9 +506,26 @@ body.setup-mode{ padding-bottom:24px; }
   transform:translateX(-50%); z-index:60;
   background:var(--surface); border:1px solid var(--line-2); border-radius:var(--r-md);
   box-shadow:var(--shadow); padding:11px 14px; font-size:12.5px; font-weight:700;
-  max-width:min(92vw, 420px);
+  max-width:min(92vw, 460px); width:max-content;
+  display:flex; align-items:center; gap:12px;
 }
+.toast > span{ min-width:0; }
+.toast .btn{ flex:0 0 auto; }
 body.setup-mode .toast{ bottom:20px; }
+
+/* ---------------- modal ---------------- */
+.modal{
+  position:fixed; inset:0; z-index:70;
+  background:rgba(11,11,12,.45);
+  display:grid; place-items:center; padding:20px;
+}
+.modal[hidden]{ display:none; }
+.modal-card{
+  background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg);
+  box-shadow:0 20px 60px -20px rgba(0,0,0,.5); padding:18px;
+  width:min(100%, 420px); max-height:86vh; overflow:auto;
+}
+.modal-card h2{ font-size:15px; font-weight:800; margin:0 0 10px; }
 
 .sr-only{
   position:absolute; width:1px; height:1px; padding:0; margin:-1px;
@@ -992,6 +1012,34 @@ body.setup-mode .toast{ bottom:20px; }
   </div>
 
   <div class="card">
+    <div class="card-head"><h2>端末間でデータを移す</h2></div>
+    <div class="note" style="margin-bottom:12px;">
+      スマホとパソコンでデータは共有されません。移したい時は、片方で書き出したファイルを
+      もう片方で読み込んでください。読み込む時に<b>「上書き」か「追加（マージ）」を選べます</b>ので、
+      両方の端末で別々に入力していても消えません。
+    </div>
+    <div class="btn-row">
+      <button class="btn sm" id="btn-share" type="button">📤 書き出して共有する</button>
+      <button class="btn ghost sm" id="btn-import-2" type="button">⬆ 読み込む</button>
+    </div>
+    <div class="note tight" id="transfer-status" style="margin-top:8px;"></div>
+    <div class="hr"></div>
+    <details class="acc" style="margin-bottom:0;">
+      <summary>パソコンで使う場合のコツ</summary>
+      <div class="acc-body">
+        <div class="note">
+          パソコンの Chrome / Edge なら、上の「保存先」でファイルを1つ指定しておくと、
+          変更が自動でそのファイルに書き込まれます。そのファイルを
+          iCloud Drive や Google ドライブ、Dropbox などの同期フォルダに置いておけば、
+          別のパソコンからも同じファイルを指定するだけで続きから使えます。<br>
+          スマホのブラウザはこの機能に対応していないため、スマホとの行き来は
+          書き出し・読み込みで行ってください。
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <div class="card">
     <div class="card-head"><h2>データの保存とプライバシー</h2></div>
     <div class="note">
       <b>入力したデータは、この端末のブラウザの中（localStorage）だけに保存されます。</b>
@@ -1026,6 +1074,15 @@ body.setup-mode .toast{ bottom:20px; }
 </section>
 
 </main>
+
+<!-- 読み込み方法の確認 -->
+<div class="modal" id="import-modal" hidden>
+  <div class="modal-card">
+    <h2 id="import-modal-title">読み込みの確認</h2>
+    <div class="note" id="import-modal-body"></div>
+    <div class="btn-row" id="import-modal-actions" style="margin-top:14px;"></div>
+  </div>
+</div>
 
 <script>
 /* ==========================================================================
@@ -1307,7 +1364,16 @@ async function saveJSON(key, value) {
     if (FS_HANDLE) { FS_CACHE = FS_CACHE || {}; FS_CACHE[key] = value; await writeFsCache(); }
   } catch (e) { console.error('save failed', key, e); }
 }
-const save = (key) => saveJSON(key, STATE[key]);
+/* 実データが変わったら「最後に変更した時刻」も記録する。
+   バックアップ催促の判定に使うので、個々の更新箇所ではなくここ1か所で面倒を見る。 */
+const TRACKED_KEYS = new Set(['shifts', 'actualPayments', 'cycleCorrections', 'jobs']);
+async function save(key) {
+  if (TRACKED_KEYS.has(key)) {
+    STATE.settings.lastChangeAt = new Date().toISOString();
+    await saveJSON('settings', STATE.settings);
+  }
+  return saveJSON(key, STATE[key]);
+}
 
 async function useFsHandle(handle) {
   FS_HANDLE = handle;
@@ -2149,8 +2215,31 @@ function renderHome(agg) {
   }
   $('home-commute').textContent = yen(agg.exemptCommute);
 
-  /* バナー */
+  /* バナー。データを失う恐れのあるものを先に出す。 */
   const banners = [];
+
+  if (shouldWarnIOS()) {
+    banners.push(`<div class="banner crit"><span class="bi">⚠️</span><div>
+      <b>このままだとデータが消えることがあります。</b>
+      iPhone / iPad の Safari は、7日間このページを開かないと保存データを自動削除します（iOSの仕様）。<br>
+      画面下の <b>共有ボタン（四角から上向き矢印が出ているアイコン）</b> →
+      <b>「ホーム画面に追加」</b> で追加しておくと、この削除の対象外になります。
+      <div class="btn-row" style="margin-top:9px;">
+        <button class="btn sm" data-ios="done" type="button">追加した</button>
+        <button class="btn ghost sm" data-ios="later" type="button">あとで</button>
+      </div></div></div>`);
+  }
+
+  const nudge = backupNudge();
+  if (nudge) {
+    banners.push(`<div class="banner warn"><span class="bi">💾</span><div>
+      <b>${nudge.never ? 'まだ一度もバックアップを書き出していません。' : `最後に書き出してから${nudge.days}日経っています。`}</b>
+      ブラウザのデータを消すと入力内容も消えてしまいます。
+      <div class="btn-row" style="margin-top:9px;">
+        <button class="btn sm" data-nudge="export" type="button">いま書き出す</button>
+      </div></div></div>`);
+  }
+
   if (T.provisional) {
     banners.push(`<div class="banner warn"><span class="bi">⚠️</span><div>
       <b>${STATE.activeYear}年の税制は未確定です。</b>
@@ -2619,6 +2708,18 @@ $('tabbar').addEventListener('click', (e) => {
 $('goto-walls').addEventListener('click', () => {
   STATE.activeTab = 'walls'; renderTabs(); window.scrollTo({ top: 0 });
 });
+
+/* ホームの警告バナー内のボタン */
+$('home-banners').addEventListener('click', (e) => {
+  const ios = e.target.closest('[data-ios]');
+  if (ios) {
+    lsSet('iosWarnDismissed', ios.dataset.ios === 'done' ? 'done' : String(Date.now()));
+    renderAll();
+    if (ios.dataset.ios === 'later') toast('7日後にまたお知らせします。');
+    return;
+  }
+  if (e.target.closest('[data-nudge="export"]')) downloadBackup(null);
+});
 $('year-select').addEventListener('change', (e) => {
   STATE.activeYear = Number(e.target.value);
   renderAll();
@@ -2860,18 +2961,49 @@ $('btn-disconnect-fs').addEventListener('click', async () => {
 });
 
 /* --- バックアップ --- */
-$('btn-export').addEventListener('click', () => {
+function buildBackup() {
   const payload = { exportedAt: new Date().toISOString(), version: 2 };
   PERSIST_KEYS.forEach((k) => { payload[k] = STATE[k]; });
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
   const t = new Date();
-  a.href = url;
-  a.download = `salary_backup_${t.getFullYear()}${pad(t.getMonth() + 1)}${pad(t.getDate())}.json`;
+  const name = `salary_backup_${t.getFullYear()}${pad(t.getMonth() + 1)}${pad(t.getDate())}.json`;
+  return { text: JSON.stringify(payload, null, 2), name };
+}
+
+async function markBackedUp() {
+  STATE.settings.lastBackupAt = new Date().toISOString();
+  await saveJSON('settings', STATE.settings);
+  renderAll();
+}
+
+function downloadBackup(statusId) {
+  const { text, name } = buildBackup();
+  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
-  $('backup-status').textContent = '書き出しました。ダウンロードフォルダをご確認ください。';
+  if (statusId && $(statusId)) $(statusId).textContent = `「${name}」を書き出しました。`;
+  markBackedUp();
+}
+
+$('btn-export').addEventListener('click', () => downloadBackup('backup-status'));
+
+/* スマホ同士なら AirDrop / LINE / メールに直接渡せる。
+   対応していない環境では通常のダウンロードに落とす。 */
+$('btn-share').addEventListener('click', async () => {
+  const { text, name } = buildBackup();
+  const file = new File([text], name, { type: 'application/json' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: '給与ノートのバックアップ' });
+      $('transfer-status').textContent = '共有しました。受け取った端末で「読み込む」から取り込んでください。';
+      markBackedUp();
+    } catch (e) {
+      if (e && e.name !== 'AbortError') $('transfer-status').textContent = '共有できませんでした。「書き出す」をお試しください。';
+    }
+  } else {
+    downloadBackup('transfer-status');
+  }
 });
 /* ---- バックアップの読み込み（初回セットアップ画面と設定タブで共用）----
    旧アプリ(baito_salary_tracker_1.html)が書き出したJSONも同じキー構成なので
@@ -2931,6 +3063,71 @@ async function applyBackup(data) {
   for (const k of PERSIST_KEYS) await save(k);
 }
 
+/* 上書きではなく既存に足し込む。両方の端末で別々に入力していても消さない。
+   同じシフトが二重に増えないよう、id と「勤務先・日付・時刻」の両方で重複を見る
+   （端末をまたぐと同じ勤務でも id が別になるため）。 */
+function mergeBackup(data) {
+  const added = { shifts: 0, actuals: 0, jobs: 0, holidays: 0 };
+  const dup   = { shifts: 0, actuals: 0 };
+
+  if (Array.isArray(data.jobs)) {
+    const ids = new Set(STATE.jobs.map((j) => j.id));
+    data.jobs.forEach((j) => {
+      if (j && j.id && !ids.has(j.id)) { STATE.jobs.push(j); ids.add(j.id); added.jobs++; }
+    });
+  }
+
+  const shiftKey = (s) => `${s.jobId}|${s.date}|${s.start}|${s.end}`;
+  const seenShiftId = new Set(STATE.shifts.map((s) => s.id));
+  const seenShiftKey = new Set(STATE.shifts.map(shiftKey));
+  (Array.isArray(data.shifts) ? data.shifts : []).forEach((s) => {
+    if (!s || !s.date) return;
+    if (seenShiftId.has(s.id) || seenShiftKey.has(shiftKey(s))) { dup.shifts++; return; }
+    STATE.shifts.push(s);
+    seenShiftId.add(s.id); seenShiftKey.add(shiftKey(s));
+    added.shifts++;
+  });
+
+  const apKey = (p) => `${p.jobId}|${p.month}|${p.taxable}|${p.commute}`;
+  const seenApId = new Set(STATE.actualPayments.map((p) => p.id));
+  const seenApKey = new Set(STATE.actualPayments.map(apKey));
+  (Array.isArray(data.actualPayments) ? data.actualPayments : []).forEach((p) => {
+    if (!p || !p.month) return;
+    if (seenApId.has(p.id) || seenApKey.has(apKey(p))) { dup.actuals++; return; }
+    STATE.actualPayments.push(p);
+    seenApId.add(p.id); seenApKey.add(apKey(p));
+    added.actuals++;
+  });
+
+  /* 衝突したら手元の値を優先する（今見ている端末で直した内容を消さない） */
+  if (data.holidays && typeof data.holidays === 'object') {
+    Object.entries(data.holidays).forEach(([d, n]) => {
+      if (!(d in STATE.holidays)) { STATE.holidays[d] = n; added.holidays++; }
+    });
+  }
+  if (data.cycleCorrections && typeof data.cycleCorrections === 'object') {
+    Object.entries(data.cycleCorrections).forEach(([jobId, byKey]) => {
+      STATE.cycleCorrections[jobId] = { ...byKey, ...(STATE.cycleCorrections[jobId] || {}) };
+    });
+  }
+  if (data.overageChecklist && typeof data.overageChecklist === 'object') {
+    Object.entries(data.overageChecklist).forEach(([wall, byIdx]) => {
+      STATE.overageChecklist[wall] = { ...byIdx, ...(STATE.overageChecklist[wall] || {}) };
+    });
+  }
+  /* プロフィールと端数処理などの設定は触らない（手元の設定を尊重する） */
+  return { added, dup };
+}
+
+async function commitMerge(data) {
+  const r = mergeBackup(data);
+  migrate();
+  STATE.cycleKey = null;
+  for (const k of PERSIST_KEYS) await save(k);
+  return r;
+}
+
+/* ---- 読み込みフロー ---- */
 let importStatusEl = null;   // 読み込みを開始した画面のメッセージ欄
 
 function startImport(statusElId) {
@@ -2940,7 +3137,38 @@ function startImport(statusElId) {
 }
 
 $('btn-import').addEventListener('click', () => startImport('backup-status'));
+$('btn-import-2').addEventListener('click', () => startImport('transfer-status'));
 $('btn-setup-import').addEventListener('click', () => startImport('setup-import-status'));
+
+function closeImportModal() { $('import-modal').hidden = true; $('import-modal-actions').innerHTML = ''; }
+$('import-modal').addEventListener('click', (e) => { if (e.target.id === 'import-modal') closeImportModal(); });
+
+/* 読み込み方を選んでもらう。空のアプリなら選択肢を出さずそのまま読み込む。 */
+function askImportMode(data, onChoose) {
+  const { line, when } = backupSummary(data);
+  const hasData = hasMeaningfulData();
+  $('import-modal-title').textContent = hasData ? '読み込み方を選んでください' : 'この内容を読み込みます';
+  $('import-modal-body').innerHTML =
+    `<b>${esc(line)}</b>${when ? `<br><span style="color:var(--ink-3)">${esc(when)}</span>` : ''}`
+    + (hasData
+        ? `<div class="hr"></div>
+           <b>追加</b>… 今あるデータを残したまま、足りない分だけ足します。
+           同じ勤務は二重に増えません。<br>
+           <b>上書き</b>… 今あるデータを消して、ファイルの内容だけにします。`
+        : '');
+
+  const actions = $('import-modal-actions');
+  actions.innerHTML = hasData
+    ? `<button class="btn" data-mode="merge" type="button">追加する</button>
+       <button class="btn ghost" data-mode="replace" type="button">上書きする</button>
+       <button class="btn quiet" data-mode="cancel" type="button">やめる</button>`
+    : `<button class="btn" data-mode="replace" type="button">読み込む</button>
+       <button class="btn quiet" data-mode="cancel" type="button">やめる</button>`;
+  actions.querySelectorAll('[data-mode]').forEach((b) => {
+    b.addEventListener('click', () => { closeImportModal(); onChoose(b.dataset.mode); });
+  });
+  $('import-modal').hidden = false;
+}
 
 $('file-import').addEventListener('change', (e) => {
   const file = e.target.files[0];
@@ -2951,29 +3179,39 @@ $('file-import').addEventListener('change', (e) => {
 
   const reader = new FileReader();
   reader.onerror = () => say('ファイルを開けませんでした。');
-  reader.onload = async (ev) => {
+  reader.onload = (ev) => {
     const parsed = parseBackup(ev.target.result);
     if (!parsed.ok) { say(parsed.error); return; }
 
-    const { line, when } = backupSummary(parsed.data);
-    const hadData = hasMeaningfulData();
-    const msg = [
-      '次の内容を読み込みます。', '', line, when, '',
-      hadData ? '⚠ 今このアプリに入っているデータは上書きされます。' : ''
-    ].filter(Boolean).join('\n');
-    if (!confirm(msg)) { say('読み込みを取り消しました。'); return; }
-
-    try {
-      await applyBackup(parsed.data);
-    } catch (err) {
-      console.error(err);
-      say('読み込み中に問題が発生しました。ファイルが壊れている可能性があります。');
-      return;
-    }
-    STATE.activeTab = 'home';
-    renderAll();
-    window.scrollTo({ top: 0 });
-    toast(`復元しました（${line}）`);
+    askImportMode(parsed.data, async (mode) => {
+      if (mode === 'cancel') { say('読み込みを取り消しました。'); return; }
+      try {
+        if (mode === 'merge') {
+          const { added, dup } = await commitMerge(parsed.data);
+          const parts = [];
+          if (added.shifts)   parts.push(`シフト${added.shifts}件`);
+          if (added.actuals)  parts.push(`実績${added.actuals}件`);
+          if (added.jobs)     parts.push(`バイト先${added.jobs}件`);
+          if (added.holidays) parts.push(`祝日${added.holidays}件`);
+          const skipped = dup.shifts + dup.actuals;
+          STATE.activeTab = 'home';
+          renderAll();
+          window.scrollTo({ top: 0 });
+          toast(parts.length
+            ? `${parts.join(' / ')}を追加しました${skipped ? `（重複${skipped}件はそのまま）` : ''}`
+            : '追加するものはありませんでした（すべて登録済みです）');
+        } else {
+          await applyBackup(parsed.data);
+          STATE.activeTab = 'home';
+          renderAll();
+          window.scrollTo({ top: 0 });
+          toast(`復元しました（${backupSummary(parsed.data).line}）`);
+        }
+      } catch (err) {
+        console.error(err);
+        say('読み込み中に問題が発生しました。ファイルが壊れている可能性があります。');
+      }
+    });
   };
   reader.readAsText(file);
 });
@@ -3117,12 +3355,105 @@ $('btn-rerun-setup').addEventListener('click', async () => {
    12c. トースト
    -------------------------------------------------------------------------- */
 let toastTimer = null;
-function toast(message) {
-  let el = document.querySelector('.toast');
-  if (!el) { el = document.createElement('div'); el.className = 'toast'; document.body.appendChild(el); }
-  el.textContent = message;
+function toast(message, action) {
+  document.querySelectorAll('.toast').forEach((n) => n.remove());
+  const el = document.createElement('div');
+  el.className = 'toast';
+  const text = document.createElement('span');
+  text.textContent = message;
+  el.appendChild(text);
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.remove(), 4200);
+  if (action) {
+    const btn = document.createElement('button');
+    btn.className = 'btn sm';
+    btn.type = 'button';
+    btn.textContent = action.label;
+    btn.addEventListener('click', action.onClick);
+    el.appendChild(btn);
+  } else {
+    toastTimer = setTimeout(() => el.remove(), 4200);
+  }
+  document.body.appendChild(el);
+}
+
+/* --------------------------------------------------------------------------
+   12d. Service Worker（ホーム画面に追加・オフライン対応）
+
+   iOS Safari は7日間アクセスがないと localStorage を消してしまうが、
+   ホーム画面に追加したWebアプリはその対象外になる。
+   PWA化は見た目のためではなく、データを失わないために必要。
+   -------------------------------------------------------------------------- */
+function registerServiceWorker() {
+  /* Service Worker は安全なコンテキストでしか動かない。
+     isSecureContext は https に加えて http://localhost も true になるので、
+     file:// だけを正しく弾ける。 */
+  if (!('serviceWorker' in navigator) || !window.isSecureContext) return;
+
+  navigator.serviceWorker.register('sw.js').then((reg) => {
+    /* 既に別のSWが動いている状態で新しいものが入ったら＝更新がある */
+    const notify = (worker) => {
+      toast('新しいバージョンがあります', {
+        label: '再読み込み',
+        onClick: () => worker.postMessage('SKIP_WAITING')
+      });
+    };
+    if (reg.waiting && navigator.serviceWorker.controller) notify(reg.waiting);
+    reg.addEventListener('updatefound', () => {
+      const sw = reg.installing;
+      if (!sw) return;
+      sw.addEventListener('statechange', () => {
+        if (sw.state === 'installed' && navigator.serviceWorker.controller) notify(sw);
+      });
+    });
+  }).catch((e) => console.warn('SW register failed', e));
+
+  /* 新しいSWが主導権を取ったら一度だけリロードする */
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloading) return;
+    reloading = true;
+    location.reload();
+  });
+}
+
+/* --------------------------------------------------------------------------
+   12e. データ保全の注意喚起
+   -------------------------------------------------------------------------- */
+const DAY_MS = 86400000;
+const isIOS = () =>
+  /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isStandalone = () =>
+  navigator.standalone === true ||
+  (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+
+function lsGet(key) { try { return localStorage.getItem(LS_PREFIX + key); } catch (e) { return null; } }
+function lsSet(key, val) { try { localStorage.setItem(LS_PREFIX + key, val); } catch (e) {} }
+
+/* iOS の7日ルールの警告を出すべきか。
+   端末ごとの話なので、保存先(localStorage)側で「見た」状態を持つ。 */
+function shouldWarnIOS() {
+  /* 「ホーム画面に追加」は http/https どちらでもできるので、
+     プロトコルではなく file:// かどうかだけ見る。 */
+  if (!isIOS() || isStandalone() || location.protocol === 'file:') return false;
+  const dismissed = lsGet('iosWarnDismissed');
+  if (dismissed === 'done') return false;                       // 「追加した」を押した
+  if (dismissed && Date.now() - Number(dismissed) < 7 * DAY_MS) return false;  // 「後で」を押した
+  return true;
+}
+
+/* 未書き出しの変更があり、かつ最後の書き出しから7日以上経っているか。
+   条件を満たす時だけ出すので、普段は邪魔にならない。 */
+function backupNudge() {
+  const s = STATE.settings;
+  if (!hasMeaningfulData()) return null;
+  const changed = s.lastChangeAt ? Date.parse(s.lastChangeAt) : null;
+  if (!changed) return null;
+  const backed = s.lastBackupAt ? Date.parse(s.lastBackupAt) : null;
+  if (backed && backed >= changed) return null;                 // 変更後に書き出し済み
+  const since = backed ? Date.now() - backed : null;
+  if (since !== null && since < 7 * DAY_MS) return null;
+  return { never: !backed, days: since === null ? null : Math.floor(since / DAY_MS) };
 }
 
 /* --------------------------------------------------------------------------
@@ -3211,6 +3542,7 @@ async function init() {
 
   renderStorage();
   renderAll();
+  registerServiceWorker();
 
   /* チャートだけ幅の変化に追従させる。renderAll() を呼ぶと
      フォーム入力中に再描画されて入力が飛ぶので、チャートに限定する。 */
