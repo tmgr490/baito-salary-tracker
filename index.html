@@ -1,0 +1,3233 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="給与ノート">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0F6F63">
+<meta name="robots" content="noindex, nofollow">
+<meta name="description" content="バイトのシフトから給与と年収の壁を管理する、端末内で完結するツール">
+<title>給与ノート</title>
+<style>
+/* ============================================================
+   design tokens
+   data colours are the validated categorical palette (slots 1-4)
+   and the fixed status palette; UI chrome is separate from them.
+   ============================================================ */
+:root{
+  color-scheme: light;
+
+  --page:        #F4F5F7;
+  --surface:     #FFFFFF;
+  --surface-2:   #FAFAFB;
+  --surface-3:   #F0F1F4;
+
+  --ink:         #0B0B0C;
+  --ink-2:       #55575E;
+  --ink-3:       #8A8D96;
+  --line:        #E4E6EA;
+  --line-2:      #CFD2D8;
+
+  --brand:       #0F6F63;
+  --brand-ink:   #FFFFFF;
+  --brand-soft:  #E6F2F0;
+
+  /* data — categorical slots (validated: light surface #FFFFFF) */
+  --series-1:    #2a78d6;
+  --series-2:    #eb6834;
+  --series-3:    #1baf7a;
+  --series-4:    #eda100;
+
+  /* data — status (fixed, never themed) */
+  --st-good:     #0ca30c;
+  --st-warn:     #fab219;
+  --st-serious:  #ec835a;
+  --st-crit:     #d03b3b;
+
+  /* text-safe status ink (status fills are for marks; text uses these) */
+  --st-good-ink:    #006300;
+  --st-warn-ink:    #8A5A00;
+  --st-serious-ink: #A44A22;
+  --st-crit-ink:    #B32626;
+
+  --grid:        #E8EAEE;
+  --axis:        #CFD2D8;
+
+  --r-lg: 16px;
+  --r-md: 11px;
+  --r-sm: 7px;
+
+  --shadow: 0 1px 2px rgba(11,11,12,.05), 0 6px 18px -12px rgba(11,11,12,.18);
+  --ease: cubic-bezier(.2,.7,.2,1);
+
+  --tabbar-h: 58px;
+}
+
+@media (prefers-color-scheme: dark){
+  :root:where(:not([data-theme="light"])){
+    color-scheme: dark;
+
+    --page:      #0C0D10;
+    --surface:   #17181C;
+    --surface-2: #1D1F24;
+    --surface-3: #24262C;
+
+    --ink:       #F5F6F8;
+    --ink-2:     #A7ABB5;
+    --ink-3:     #767A85;
+    --line:      #2A2C33;
+    --line-2:    #3A3D45;
+
+    --brand:     #4FD6BE;
+    --brand-ink: #06231F;
+    --brand-soft:#16302C;
+
+    --series-1:  #3987e5;
+    --series-2:  #d95926;
+    --series-3:  #199e70;
+    --series-4:  #c98500;
+
+    --st-good-ink:    #0ca30c;
+    --st-warn-ink:    #fab219;
+    --st-serious-ink: #ec835a;
+    --st-crit-ink:    #e0605f;
+
+    --grid:      #24262C;
+    --axis:      #3A3D45;
+
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 22px -14px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --page:      #0C0D10;
+  --surface:   #17181C;
+  --surface-2: #1D1F24;
+  --surface-3: #24262C;
+  --ink:       #F5F6F8;
+  --ink-2:     #A7ABB5;
+  --ink-3:     #767A85;
+  --line:      #2A2C33;
+  --line-2:    #3A3D45;
+  --brand:     #4FD6BE;
+  --brand-ink: #06231F;
+  --brand-soft:#16302C;
+  --series-1:  #3987e5;
+  --series-2:  #d95926;
+  --series-3:  #199e70;
+  --series-4:  #c98500;
+  --st-good-ink:    #0ca30c;
+  --st-warn-ink:    #fab219;
+  --st-serious-ink: #ec835a;
+  --st-crit-ink:    #e0605f;
+  --grid:      #24262C;
+  --axis:      #3A3D45;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 22px -14px rgba(0,0,0,.7);
+}
+
+*{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html{
+  font: 100%/1.55 system-ui, -apple-system, "Segoe UI", "Hiragino Sans",
+        "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+}
+body{
+  margin:0;
+  background: var(--page);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 12px);
+}
+.tnum{ font-variant-numeric: tabular-nums; }
+
+/* ---------------- app bar ---------------- */
+/* .chrome だけが sticky を持つ。ここに backdrop-filter を付けてはいけない —
+   filter 系は position:fixed の包含ブロックを作ってしまい、
+   スマホの固定ボトムタブがビューポートではなくこの要素を基準にしてしまう。 */
+.chrome{ position: sticky; top:0; z-index:30; }
+.appbar{
+  background: color-mix(in srgb, var(--page) 88%, transparent);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border-bottom: 1px solid var(--line);
+  padding: max(10px, env(safe-area-inset-top)) 16px 10px;
+}
+@supports not (backdrop-filter: blur(1px)){ .appbar{ background: var(--page); } }
+.appbar-row{
+  max-width: 980px; margin:0 auto;
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+}
+.appbar h1{
+  font-size:17px; font-weight:800; margin:0; letter-spacing:-.01em;
+  display:flex; align-items:center; gap:7px; margin-right:auto;
+}
+.appbar h1 .dot{
+  width:9px; height:9px; border-radius:50%; background:var(--brand); flex:0 0 auto;
+}
+.pill-select{
+  appearance:none; font:inherit; font-size:12.5px; font-weight:700;
+  color:var(--ink); background:var(--surface);
+  border:1px solid var(--line-2); border-radius:999px;
+  padding:5px 26px 5px 11px; cursor:pointer;
+  background-image: linear-gradient(45deg, transparent 50%, var(--ink-3) 50%),
+                    linear-gradient(135deg, var(--ink-3) 50%, transparent 50%);
+  background-position: calc(100% - 13px) 50%, calc(100% - 9px) 50%;
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+  max-width: 190px; text-overflow:ellipsis;
+}
+.icon-btn{
+  appearance:none; border:1px solid var(--line-2); background:var(--surface);
+  color:var(--ink); border-radius:999px; width:32px; height:32px;
+  display:grid; place-items:center; cursor:pointer; font-size:14px; padding:0;
+}
+
+/* ---------------- layout ---------------- */
+.wrap{ max-width: 980px; margin:0 auto; padding: 14px 16px 0; }
+.page[hidden]{ display:none; }
+
+.card{
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
+  padding: 16px;
+  margin-bottom: 14px;
+}
+.card.flush{ padding:0; overflow:hidden; }
+.card-head{
+  display:flex; align-items:center; gap:8px; margin-bottom:12px; flex-wrap:wrap;
+}
+.card-head h2{
+  font-size:14px; font-weight:800; margin:0; letter-spacing:.01em;
+}
+.card-head .spacer{ margin-left:auto; }
+.chip{
+  font-size:11px; font-weight:700; padding:2.5px 8px; border-radius:999px;
+  background: var(--surface-3); color: var(--ink-2); white-space:nowrap;
+}
+.chip.brand{ background:var(--brand-soft); color:var(--brand); }
+.note{ font-size:12px; color:var(--ink-2); line-height:1.65; }
+.note.tight{ font-size:11.5px; color:var(--ink-3); }
+.note b{ color:var(--ink); }
+.note a{ color:var(--brand); font-weight:700; }
+.hr{ height:1px; background:var(--line); margin:14px 0; border:0; }
+
+/* ---------------- hero figure ---------------- */
+.hero{
+  display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap;
+  margin-bottom: 4px;
+}
+.hero .fig{
+  font-size:clamp(30px, 8.5vw, 42px); font-weight:800; letter-spacing:-.025em;
+  line-height:1; color:var(--ink);
+}
+.hero .unit{ font-size:17px; font-weight:700; color:var(--ink-2); }
+.hero-sub{ font-size:12px; color:var(--ink-2); margin-top:7px; }
+
+/* ---------------- stat tiles ---------------- */
+.tiles{
+  display:grid; gap:1px; background:var(--surface);
+  border:1px solid var(--line); border-radius: var(--r-md); overflow:hidden;
+  grid-template-columns: repeat(auto-fit, minmax(140px,1fr));
+}
+/* 1px の隙間を box-shadow で埋めることで、タイルが奇数個でも
+   余った枡目が罫線色のまま取り残されない */
+.tile{ background:var(--surface); padding:11px 12px; box-shadow: 0 0 0 1px var(--line); }
+.tile .k{ font-size:11px; color:var(--ink-3); font-weight:600; margin-bottom:3px; }
+.tile .v{ font-size:17px; font-weight:800; letter-spacing:-.015em; }
+.tile .v small{ font-size:11px; font-weight:700; color:var(--ink-3); margin-left:2px; }
+.tile .s{ font-size:10.5px; color:var(--ink-3); margin-top:2px; }
+
+/* ---------------- wall meters ---------------- */
+.meter{ padding:13px 0; border-bottom:1px solid var(--line); }
+.meter:last-child{ border-bottom:0; padding-bottom:0; }
+.meter:first-child{ padding-top:0; }
+.meter-head{ display:flex; align-items:baseline; gap:8px; margin-bottom:7px; }
+.meter-name{ font-size:13px; font-weight:700; }
+.meter-limit{ font-size:11px; color:var(--ink-3); font-weight:600; }
+.meter-val{ margin-left:auto; font-size:12px; font-weight:700; color:var(--ink-2); }
+.track{
+  position:relative; height:9px; border-radius:999px;
+  background:var(--surface-3); overflow:visible;
+}
+.fill{
+  position:absolute; inset:0 auto 0 0; border-radius:999px;
+  background:var(--st-good); transition: width .5s var(--ease);
+}
+.fill.warn{ background:var(--st-warn); }
+.fill.serious{ background:var(--st-serious); }
+.fill.crit{ background:var(--st-crit); }
+.proj-mark{
+  position:absolute; top:-3px; bottom:-3px; width:2px;
+  background:var(--ink-2); border-radius:1px;
+  box-shadow: 0 0 0 2px var(--surface);
+}
+.meter-foot{
+  display:flex; align-items:center; gap:6px; margin-top:7px;
+  font-size:11.5px; font-weight:700;
+}
+.status-ico{ width:14px; height:14px; flex:0 0 auto; }
+.status-ico svg{ width:100%; height:100%; display:block; }
+.s-good{ color:var(--st-good-ink); }
+.s-warn{ color:var(--st-warn-ink); }
+.s-serious{ color:var(--st-serious-ink); }
+.s-crit{ color:var(--st-crit-ink); }
+.meter-note{ font-size:11.5px; color:var(--ink-2); margin-top:6px; line-height:1.6; }
+.meter-src{ font-size:11px; color:var(--ink-3); margin-top:5px; }
+
+/* ---------------- chart ---------------- */
+.chart-wrap{ position:relative; }
+.chart-wrap svg{ display:block; width:100%; height:auto; overflow:visible; }
+.legend{ display:flex; flex-wrap:wrap; gap:12px; margin-top:10px; }
+.legend-item{ display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--ink-2); font-weight:600; }
+.swatch{ width:10px; height:10px; border-radius:3px; flex:0 0 auto; }
+.tooltip{
+  position:absolute; pointer-events:none; z-index:5;
+  background:var(--surface); border:1px solid var(--line-2);
+  border-radius:var(--r-sm); box-shadow:var(--shadow);
+  padding:8px 10px; font-size:11.5px; min-width:130px;
+  transform: translate(-50%, -100%); opacity:0; transition: opacity .12s;
+}
+.tooltip.on{ opacity:1; }
+.tooltip .tt-t{ font-weight:800; margin-bottom:5px; font-size:11px; color:var(--ink-2); }
+.tooltip .tt-r{ display:flex; align-items:center; gap:6px; margin-top:2px; }
+.tooltip .tt-r .n{ margin-left:auto; font-weight:700; }
+
+/* ---------------- tables ---------------- */
+.tbl-scroll{ overflow:auto; -webkit-overflow-scrolling:touch; }
+table{ width:100%; border-collapse:collapse; font-size:12.5px; }
+thead th{
+  text-align:left; font-size:10.5px; font-weight:700; color:var(--ink-3);
+  padding:7px 9px; border-bottom:1px solid var(--line); white-space:nowrap;
+  position:sticky; top:0; background:var(--surface); z-index:1;
+  text-transform:none; letter-spacing:.02em;
+}
+tbody td{ padding:8px 9px; border-bottom:1px solid var(--line); vertical-align:middle; }
+tbody tr:last-child td{ border-bottom:0; }
+tbody tr:nth-child(even) td{ background:var(--surface-2); }
+th.n, td.n{ text-align:right; font-variant-numeric: tabular-nums; white-space:nowrap; }
+td.act{ text-align:right; width:1%; padding-left:0; padding-right:4px; }
+td .wd{ color:var(--ink-3); font-weight:600; }
+/* 区分バッジは絶対に折り返させない（折り返すと行が縦に伸びて表が崩れる） */
+.badges{ display:flex; gap:4px; flex-wrap:wrap; margin-top:3px; }
+.badge{
+  font-size:10px; font-weight:800; line-height:1.5; white-space:nowrap;
+  padding:0 5px; border-radius:4px; background:var(--surface-3); color:var(--ink-2);
+}
+.badge.hol{ background:color-mix(in srgb, var(--st-crit) 14%, transparent); color:var(--st-crit-ink); }
+.badge.ovn{ background:color-mix(in srgb, var(--st-warn) 20%, transparent); color:var(--st-warn-ink); }
+.x-btn{
+  appearance:none; border:0; background:transparent; cursor:pointer;
+  color:var(--ink-3); font-size:18px; line-height:1; border-radius:8px;
+  width:40px; height:40px; display:grid; place-items:center; padding:0;
+}
+.empty{
+  text-align:center; color:var(--ink-3); font-size:12.5px;
+  padding:26px 12px; border:1px dashed var(--line-2); border-radius:var(--r-md);
+}
+
+/* ---------------- form ---------------- */
+.grid{ display:grid; gap:10px; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); }
+.field{ display:flex; flex-direction:column; gap:5px; min-width:0; }
+.field > label{ font-size:11px; font-weight:700; color:var(--ink-2); }
+input, select, textarea{
+  font:inherit; font-size:14px; color:var(--ink);
+  background:var(--surface-2); border:1px solid var(--line-2);
+  border-radius:var(--r-sm); padding:9px 10px; width:100%;
+  appearance:none; min-width:0;
+}
+input[type="checkbox"]{ width:auto; }
+select{
+  cursor:pointer; padding-right:26px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--ink-3) 50%),
+                    linear-gradient(135deg, var(--ink-3) 50%, transparent 50%);
+  background-position: calc(100% - 14px) 50%, calc(100% - 10px) 50%;
+  background-size: 4px 4px, 4px 4px; background-repeat:no-repeat;
+}
+input:focus, select:focus, textarea:focus{
+  outline:2px solid var(--brand); outline-offset:1px; border-color:transparent;
+}
+.time-row{ display:flex; align-items:center; gap:5px; }
+.time-row select{ flex:1; }
+.time-row .sep{ color:var(--ink-3); font-weight:700; }
+
+.btn{
+  appearance:none; font:inherit; font-size:13.5px; font-weight:700;
+  background:var(--brand); color:var(--brand-ink);
+  border:1px solid transparent; border-radius:var(--r-sm);
+  padding:10px 15px; cursor:pointer; transition:filter .15s;
+}
+.btn:active{ filter:brightness(.94); }
+.btn.block{ width:100%; }
+.btn.sm{ font-size:12px; padding:7px 11px; }
+.btn.ghost{
+  background:var(--surface-2); color:var(--ink-2); border-color:var(--line-2);
+}
+.btn.quiet{ background:transparent; color:var(--ink-3); border-color:transparent; padding:5px 7px; font-size:11.5px; }
+.btn.danger{ background:transparent; color:var(--st-crit-ink); border-color:var(--line-2); }
+.btn-row{ display:flex; gap:8px; flex-wrap:wrap; }
+
+.quick{ display:flex; gap:7px; flex-wrap:wrap; margin-bottom:12px; }
+.quick button{
+  appearance:none; font:inherit; font-size:12px; font-weight:700;
+  background:var(--brand-soft); color:var(--brand);
+  border:1px solid transparent; border-radius:999px; padding:6px 12px; cursor:pointer;
+}
+
+/* ---------------- banner ---------------- */
+.banner{
+  display:flex; gap:9px; align-items:flex-start;
+  border:1px solid var(--line-2); border-left-width:3px;
+  border-radius:var(--r-md); padding:11px 13px; font-size:12px;
+  line-height:1.6; margin-bottom:14px; background:var(--surface);
+}
+.banner .bi{ font-size:13px; line-height:1.3; flex:0 0 auto; }
+.banner.warn{ border-left-color:var(--st-warn); }
+.banner.crit{ border-left-color:var(--st-crit); }
+.banner.info{ border-left-color:var(--series-1); }
+.banner b{ font-weight:800; }
+
+/* ---------------- checklist ---------------- */
+.check{
+  display:flex; align-items:flex-start; gap:9px; padding:8px 0;
+  font-size:12.5px; cursor:pointer; line-height:1.6;
+}
+.check input{ margin-top:3px; flex:0 0 auto; width:16px; height:16px; accent-color:var(--brand); }
+.check.done span{ text-decoration:line-through; color:var(--ink-3); }
+
+/* ---------------- collapsible ---------------- */
+details.acc{ border:1px solid var(--line); border-radius:var(--r-md); margin-bottom:10px; background:var(--surface-2); }
+details.acc > summary{
+  cursor:pointer; padding:11px 13px; font-size:13px; font-weight:700;
+  list-style:none; display:flex; align-items:center; gap:8px;
+}
+details.acc > summary::-webkit-details-marker{ display:none; }
+details.acc > summary::after{ content:'⌄'; margin-left:auto; color:var(--ink-3); font-size:14px; }
+details.acc[open] > summary::after{ content:'⌃'; }
+details.acc > .acc-body{ padding: 0 13px 13px; }
+
+/* ---------------- bottom tab bar ---------------- */
+.tabbar{
+  position:fixed; left:0; right:0; bottom:0; z-index:40;
+  height: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(18px) saturate(180%);
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  border-top:1px solid var(--line);
+  display:flex;
+}
+@supports not (backdrop-filter: blur(1px)){ .tabbar{ background: var(--surface); } }
+.tabbar-inner{ display:flex; flex:1 1 auto; min-width:0; }
+.tabbar button{
+  appearance:none; border:0; background:transparent; cursor:pointer;
+  flex:1 1 0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:3px; font:inherit; font-size:10px; font-weight:700; color:var(--ink-3);
+  padding:0; transition:color .15s;
+}
+.tabbar button .ti{ display:block; width:21px; height:21px; }
+.tabbar button .ti svg{ width:100%; height:100%; display:block; }
+.tabbar button[aria-selected="true"]{ color:var(--brand); }
+
+/* ---------------- desktop ---------------- */
+@media (min-width: 720px){
+  /* タブバーを固定配置から通常フローに戻し、.chrome の中でアプリバーの下に並べる。
+     以前は .appbar と .tabbar が両方 top:0 に貼り付き、
+     スクロールするとタブバーがアプリバーの下に潜って押せなくなっていた。 */
+  .tabbar{
+    position:static; height:auto; padding:0 16px;
+    border-top:0; border-bottom:1px solid var(--line);
+    background: color-mix(in srgb, var(--page) 88%, transparent);
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+    max-width:none; justify-content:flex-start; gap:2px;
+  }
+  .tabbar-inner{
+    display:flex; gap:2px; max-width:980px; margin:0 auto; width:100%;
+  }
+  .appbar{ border-bottom:0; }
+  .tabbar button{
+    flex:0 0 auto; flex-direction:row; gap:7px; font-size:13px;
+    padding:11px 14px; border-bottom:2px solid transparent; margin-bottom:-1px;
+  }
+  .tabbar button .ti{ width:16px; height:16px; }
+  .tabbar button[aria-selected="true"]{ border-bottom-color:var(--brand); }
+  body{ padding-bottom:28px; }
+  .grid{ grid-template-columns: repeat(auto-fit, minmax(200px,1fr)); }
+}
+@supports not (backdrop-filter: blur(1px)){
+  @media (min-width: 720px){ .tabbar{ background: var(--page); } }
+}
+
+@media (min-width: 1024px){
+  .wrap{ max-width: 1200px; }
+  .tabbar-inner, .appbar-row{ max-width: 1200px; }
+  /* ホームは2カラム。バナーと年間累計カードは横幅いっぱい */
+  #page-home:not([hidden]){
+    display:grid; align-items:start; gap:0 16px;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  }
+  #page-home > #home-banners,
+  #page-home > #home-hero{ grid-column: 1 / -1; }
+}
+
+/* タッチ端末でホバー状態が貼り付かないように */
+@media (hover: hover){
+  .btn:hover{ filter:brightness(1.07); }
+  .x-btn:hover{ color:var(--st-crit-ink); background:var(--surface-3); }
+}
+
+/* ---------------- first-run setup ---------------- */
+.setup-steps{ display:flex; gap:6px; margin: 4px 0 14px; }
+.setup-steps span{
+  flex:1 1 0; height:4px; border-radius:999px; background:var(--surface-3);
+  transition: background .3s var(--ease);
+}
+.setup-steps span.on{ background:var(--brand); }
+.setup-nav{
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  padding-bottom:12px;
+}
+#page-setup code{
+  font-size:.92em; background:var(--surface-3); padding:1px 5px; border-radius:4px;
+}
+body.setup-mode .tabbar{ display:none; }
+body.setup-mode{ padding-bottom:24px; }
+
+/* ---------------- toast ---------------- */
+.toast{
+  position:fixed; left:50%; bottom:calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 14px);
+  transform:translateX(-50%); z-index:60;
+  background:var(--surface); border:1px solid var(--line-2); border-radius:var(--r-md);
+  box-shadow:var(--shadow); padding:11px 14px; font-size:12.5px; font-weight:700;
+  max-width:min(92vw, 420px);
+}
+body.setup-mode .toast{ bottom:20px; }
+
+.sr-only{
+  position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+  overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0;
+}
+</style>
+</head>
+<body>
+
+<div class="chrome" id="chrome">
+<header class="appbar">
+  <div class="appbar-row">
+    <h1><span class="dot"></span>給与ノート</h1>
+    <select class="pill-select" id="year-select" aria-label="対象年"></select>
+    <select class="pill-select" id="job-select" aria-label="バイト先"></select>
+    <button class="icon-btn" id="theme-toggle" type="button" aria-label="テーマ切替">◐</button>
+  </div>
+</header>
+
+<nav class="tabbar" id="tabbar" role="tablist">
+  <div class="tabbar-inner">
+  <button role="tab" data-tab="home" aria-selected="true"><span class="ti" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 20V9.5L12 3.5l8 6V20"/><path d="M9.5 20v-6h5v6"/></svg></span>ホーム</button>
+  <button role="tab" data-tab="entry" aria-selected="false"><span class="ti" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 20h8"/><path d="M15.5 4.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg></span>入力</button>
+  <button role="tab" data-tab="pay" aria-selected="false"><span class="ti" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3 10h18"/><path d="M7 14.5h4"/></svg></span>給与</button>
+  <button role="tab" data-tab="walls" aria-selected="false"><span class="ti" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 19V7"/><path d="M4 8h9.5a2 2 0 0 1 0 4H4"/><path d="M4 12h12.5a2 2 0 0 1 0 4H4"/></svg></span>年収の壁</button>
+  <button role="tab" data-tab="settings" aria-selected="false"><span class="ti" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="3.2"/>
+      <path d="M12 3v2.2M12 18.8V21M21 12h-2.2M5.2 12H3M18.4 5.6l-1.6 1.6M7.2 16.8l-1.6 1.6M18.4 18.4l-1.6-1.6M7.2 7.2 5.6 5.6"/></svg></span>設定</button>
+  </div>
+</nav>
+</div><!-- /.chrome -->
+
+<main class="wrap">
+
+<!-- ============================== SETUP (first run) ============================== -->
+<section class="page" id="page-setup" hidden>
+  <div class="setup-steps" id="setup-dots"></div>
+
+  <!-- 1. ようこそ -->
+  <div class="card setup-step" data-step="0">
+    <div class="card-head"><h2>給与ノートへようこそ</h2></div>
+    <div class="note" style="margin-bottom:14px;">
+      バイトのシフトを登録すると、給与サイクルごとの支給額と、年収の壁までの残りを自動で計算します。
+      複数のバイト先をまとめて集計できます。
+    </div>
+    <div class="banner info" style="margin-bottom:14px;">
+      <span class="bi">🔒</span>
+      <div><b>入力したデータは、この端末のブラウザの中だけに保存されます。</b>
+      サーバーには一切送信されません。作者を含め、誰も見ることはできません。<br>
+      その代わり、ブラウザの閲覧データを削除すると消えてしまいます。
+      設定タブからこまめに書き出しておくと安心です。</div>
+    </div>
+    <div class="hr"></div>
+    <div class="note" style="font-weight:700; color:var(--ink); margin-bottom:8px;">
+      すでにバックアップファイルをお持ちですか？
+    </div>
+    <div class="note tight" style="margin-bottom:10px;">
+      以前のバージョンや別の端末で書き出した <code>.json</code> ファイルから、そのまま復元できます。
+    </div>
+    <button class="btn ghost block" id="btn-setup-import" type="button">⬆ バックアップから復元する</button>
+    <div class="note tight" id="setup-import-status" style="margin-top:8px;"></div>
+  </div>
+
+  <!-- 2. バイト先 -->
+  <div class="card setup-step" data-step="1" hidden>
+    <div class="card-head"><h2>バイト先のこと</h2></div>
+    <div class="note" style="margin-bottom:14px;">
+      まず1件だけ登録します。掛け持ちしている場合は、あとから設定タブで追加できます。
+    </div>
+    <div class="grid">
+      <div class="field"><label for="su-name">バイト先の名前</label>
+        <input type="text" id="su-name" placeholder="例: カフェ"></div>
+      <div class="field"><label for="su-wage">基本時給(円)</label>
+        <input type="number" id="su-wage" min="0" step="10" inputmode="numeric" placeholder="例: 1200"></div>
+      <div class="field"><label for="su-sun">日曜・祝日の加算額(円)</label>
+        <input type="number" id="su-sun" min="0" step="10" inputmode="numeric" value="0"></div>
+    </div>
+    <div class="note tight" style="margin:8px 0 14px;">
+      早朝・夕方・深夜などの時間帯別の加算は、あとから設定タブで細かく追加できます。
+    </div>
+    <div class="hr"></div>
+    <div class="note" style="font-weight:700; color:var(--ink); margin-bottom:8px;">締め日と支払日</div>
+    <div class="grid">
+      <div class="field"><label for="su-cutoff">締め日</label><select id="su-cutoff"></select></div>
+      <div class="field"><label for="su-pay-months">支払いは何ヶ月後</label>
+        <select id="su-pay-months">
+          <option value="0">当月</option><option value="1" selected>翌月</option>
+          <option value="2">翌々月</option><option value="3">3ヶ月後</option>
+        </select></div>
+      <div class="field"><label for="su-pay-day">支払日</label><select id="su-pay-day"></select></div>
+      <div class="field"><label for="su-pay-adjust">支払日が土日祝の場合</label>
+        <select id="su-pay-adjust">
+          <option value="before" selected>前営業日</option>
+          <option value="after">翌営業日</option>
+          <option value="none">調整しない</option>
+        </select></div>
+    </div>
+    <div class="note tight" style="margin-top:8px;">
+      給与明細か雇用契約書に書いてあります。分からなければそのままでも構いません（あとで変更できます）。
+    </div>
+  </div>
+
+  <!-- 3. 通勤費 -->
+  <div class="card setup-step" data-step="2" hidden>
+    <div class="card-head"><h2>通勤費のこと</h2></div>
+    <div class="note" style="margin-bottom:14px;">
+      支給されていない場合は0のままで大丈夫です。
+    </div>
+    <div class="grid">
+      <div class="field"><label for="su-trip">1回の勤務あたり往復運賃(円)</label>
+        <input type="number" id="su-trip" min="0" step="10" inputmode="numeric" value="0"></div>
+      <div class="field"><label for="su-pass">1ヶ月定期券代(円)</label>
+        <input type="number" id="su-pass" min="0" step="10" inputmode="numeric" value="0"></div>
+      <div class="field"><label for="su-pass-th">定期に切替える勤務日数(以上)</label>
+        <input type="number" id="su-pass-th" min="0" step="1" inputmode="numeric" value="0"></div>
+      <div class="field"><label for="su-exempt">通勤費は非課税扱い</label>
+        <select id="su-exempt"><option value="true" selected>はい</option><option value="false">いいえ</option></select></div>
+    </div>
+    <div class="note tight" style="margin-top:8px;">
+      公共交通機関の通勤手当は月15万円まで非課税です。ほとんどの場合「はい」で合っています。
+      定期券を使わないなら、切替日数は0のままにしてください。
+    </div>
+  </div>
+
+  <!-- 4. プロフィール -->
+  <div class="card setup-step" data-step="3" hidden>
+    <div class="card-head"><h2>あなたのこと</h2></div>
+    <div class="note" style="margin-bottom:14px;">
+      どの「年収の壁」が自分に関係するかは、年齢と扶養の状況で変わります。
+      ここでの回答に応じて表示される壁が切り替わります。
+    </div>
+    <div class="grid">
+      <div class="field"><label for="su-age">年齢(12月31日時点)</label>
+        <input type="number" id="su-age" min="0" max="120" step="1" inputmode="numeric" placeholder="例: 20"></div>
+      <div class="field"><label for="su-student">学生ですか</label>
+        <select id="su-student">
+          <option value="">選択してください</option>
+          <option value="true">はい</option><option value="false">いいえ</option>
+        </select></div>
+      <div class="field" id="su-wrap-tokurei" hidden><label for="su-tokurei">学生納付特例を利用中</label>
+        <select id="su-tokurei">
+          <option value="">選択してください</option>
+          <option value="true">はい</option><option value="false">いいえ</option>
+        </select></div>
+      <div class="field"><label for="su-dep-tax">誰かの税法上の扶養に入っている</label>
+        <select id="su-dep-tax">
+          <option value="">選択してください</option>
+          <option value="true">はい</option><option value="false">いいえ</option>
+        </select></div>
+      <div class="field" id="su-wrap-rel" hidden><label for="su-rel">扶養している方との続柄</label>
+        <select id="su-rel">
+          <option value="other">配偶者以外の親族(親の子・孫など)</option>
+          <option value="spouse">配偶者(夫・妻)</option>
+        </select></div>
+      <div class="field"><label for="su-dep-shaho">社会保険の扶養に入っている</label>
+        <select id="su-dep-shaho">
+          <option value="">選択してください</option>
+          <option value="true">はい</option><option value="false">いいえ</option>
+        </select></div>
+    </div>
+    <div class="note tight" style="margin-top:8px;">
+      分からない項目は空欄のままでも進めます。その場合、その項目に関係する壁は表示されません。
+      あとから設定タブでいつでも変更できます。
+    </div>
+  </div>
+
+  <div class="setup-nav">
+    <button class="btn ghost" id="su-back" type="button" hidden>戻る</button>
+    <button class="btn quiet" id="su-skip" type="button">あとで設定する</button>
+    <span style="flex:1"></span>
+    <button class="btn" id="su-next" type="button">次へ</button>
+  </div>
+</section>
+
+<!-- ============================== HOME ============================== -->
+<section class="page" id="page-home" role="tabpanel">
+  <div id="home-banners"></div>
+
+  <div class="card" id="home-hero">
+    <div class="card-head">
+      <h2>年間累計収入</h2>
+      <span class="chip" id="home-year-chip">-</span>
+      <span class="spacer"></span>
+      <span class="chip" id="home-basis-chip">-</span>
+    </div>
+    <div class="hero">
+      <span class="fig tnum" id="home-total">¥0</span>
+      <span class="unit" id="home-total-sub"></span>
+    </div>
+    <div class="hero-sub" id="home-period">-</div>
+    <div class="hr"></div>
+    <div class="tiles">
+      <div class="tile">
+        <div class="k">月平均ペース</div>
+        <div class="v tnum" id="home-pace">-</div>
+        <div class="s" id="home-pace-sub">-</div>
+      </div>
+      <div class="tile">
+        <div class="k">年末着地予想</div>
+        <div class="v tnum" id="home-projection">-</div>
+        <div class="s" id="home-projection-sub">-</div>
+      </div>
+      <div class="tile">
+        <div class="k">次の給料日</div>
+        <div class="v" id="home-nextpay">-</div>
+        <div class="s" id="home-nextpay-sub">-</div>
+      </div>
+      <div class="tile">
+        <div class="k">通勤費(非課税分)</div>
+        <div class="v tnum" id="home-commute">-</div>
+        <div class="s">壁の判定では原則除外</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h2>月ごとの収入</h2>
+      <span class="spacer"></span>
+      <button class="btn quiet" id="toggle-chart-table" type="button">表で見る</button>
+    </div>
+    <div class="chart-wrap" id="monthly-chart-wrap">
+      <div id="monthly-chart"></div>
+      <div class="tooltip" id="chart-tooltip"></div>
+    </div>
+    <div class="legend" id="monthly-legend"></div>
+    <div id="monthly-table" hidden></div>
+    <div class="note tight" style="margin-top:10px;">
+      支払日が属する月で集計しています（所得税法上、給与は「支給日」の属する年の収入として扱われるため）。
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h2>いちばん近い壁</h2>
+      <span class="spacer"></span>
+      <button class="btn quiet" id="goto-walls" type="button">すべて見る →</button>
+    </div>
+    <div id="home-walls"></div>
+  </div>
+</section>
+
+<!-- ============================== ENTRY ============================== -->
+<section class="page" id="page-entry" role="tabpanel" hidden>
+  <div class="card">
+    <div class="card-head">
+      <h2>シフトを追加</h2>
+      <span class="spacer"></span>
+      <span class="chip" id="entry-job-chip">-</span>
+    </div>
+    <div class="quick" id="quick-shifts"></div>
+    <div class="grid">
+      <div class="field"><label for="in-date">勤務日</label><input type="date" id="in-date"></div>
+      <div class="field"><label for="in-start-h">開始</label>
+        <div class="time-row">
+          <select id="in-start-h" aria-label="開始時"></select><span class="sep">:</span><select id="in-start-m" aria-label="開始分"></select>
+        </div>
+      </div>
+      <div class="field"><label for="in-end-h">終了</label>
+        <div class="time-row">
+          <select id="in-end-h" aria-label="終了時"></select><span class="sep">:</span><select id="in-end-m" aria-label="終了分"></select>
+        </div>
+      </div>
+      <div class="field"><label for="in-break">休憩(分)</label><input type="number" id="in-break" value="0" min="0" step="5"></div>
+      <div class="field"><label for="in-break-start">休憩開始(任意)</label>
+        <select id="in-break-start" aria-label="休憩開始時刻"></select>
+      </div>
+    </div>
+    <div class="note tight" style="margin:8px 0 12px;">
+      休憩開始を指定すると、その時間帯をピンポイントで無給として差し引きます。未指定の場合は実働時間の平均時給で按分して差し引きます。
+    </div>
+    <div class="banner info" id="entry-preview" style="margin-bottom:12px;"><span class="bi">🧮</span><div id="entry-preview-body">日付と時刻を入力すると見込み日給を表示します。</div></div>
+    <button class="btn block" id="btn-add-shift" type="button">シフトを追加</button>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h2>登録済みシフト</h2>
+      <span class="chip" id="shift-count">0件</span>
+    </div>
+    <div class="tbl-scroll" style="max-height:420px;">
+      <table>
+        <thead><tr>
+          <th class="n">日付</th><th class="n">時間</th><th class="n">実働</th><th class="n">日給</th><th></th>
+        </tr></thead>
+        <tbody id="shift-tbody"></tbody>
+      </table>
+    </div>
+    <div class="empty" id="shift-empty" hidden>まだシフトが登録されていません</div>
+  </div>
+</section>
+
+<!-- ============================== PAY ============================== -->
+<section class="page" id="page-pay" role="tabpanel" hidden>
+  <div class="card">
+    <div class="card-head">
+      <h2>給与サイクル</h2>
+      <span class="spacer"></span>
+      <select class="pill-select" id="cycle-select" style="max-width:210px;" aria-label="対象サイクル"></select>
+    </div>
+    <div class="tiles" style="margin-bottom:12px;">
+      <div class="tile"><div class="k">勤務日数</div><div class="v tnum" id="cy-days">-</div></div>
+      <div class="tile"><div class="k">給与</div><div class="v tnum" id="cy-wage">-</div><div class="s" id="cy-wage-sub"></div></div>
+      <div class="tile"><div class="k">通勤費</div><div class="v tnum" id="cy-commute">-</div><div class="s" id="cy-commute-sub"></div></div>
+      <div class="tile"><div class="k">支給合計</div><div class="v tnum" id="cy-total">-</div><div class="s" id="cy-payday"></div></div>
+    </div>
+    <details class="acc">
+      <summary>実際の振込額と違ったとき（訂正入力）</summary>
+      <div class="acc-body">
+        <div class="grid">
+          <div class="field"><label for="cy-wage-corr">実際に振り込まれた給与</label><input type="number" id="cy-wage-corr"></div>
+          <div class="field"><label for="cy-commute-corr">実際に振り込まれた通勤費</label><input type="number" id="cy-commute-corr"></div>
+        </div>
+        <div class="note tight" style="margin-top:8px;">入力すると、以降の年間集計・壁判定はこの金額を優先して使います。空欄に戻せば計算値に戻ります。</div>
+      </div>
+    </details>
+    <div class="tbl-scroll" style="max-height:320px;">
+      <table>
+        <thead><tr><th>日付</th><th>区分</th><th>時間</th><th class="n">実働</th><th class="n">日給</th></tr></thead>
+        <tbody id="cycle-tbody"></tbody>
+      </table>
+    </div>
+    <div class="empty" id="cycle-empty" hidden>この期間のシフトはありません</div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h2>受け取った給与の記録</h2>
+      <span class="chip" id="actual-count">0件</span>
+      <span class="spacer"></span>
+    </div>
+    <div class="note" style="margin-bottom:12px;">
+      このアプリを使う前にもらった給与や、シフトを登録していない月の実績をここに直接入力できます。<br>
+      <b>注意:</b> シフトから計算している期間と同じ支払月をここにも入れると二重計上になります。
+    </div>
+    <div class="grid">
+      <div class="field"><label for="ap-month">支払年月</label><input type="month" id="ap-month"></div>
+      <div class="field"><label for="ap-taxable">課税支給額(通勤費を除く)</label><input type="number" id="ap-taxable" min="0" step="1"></div>
+      <div class="field"><label for="ap-commute">非課税通勤費</label><input type="number" id="ap-commute" min="0" step="1"></div>
+      <div class="field"><label for="ap-note">備考</label><input type="text" id="ap-note" placeholder="例: 1月分給与"></div>
+    </div>
+    <button class="btn block" id="btn-add-actual" type="button" style="margin-top:12px;">記録を追加</button>
+    <div class="hr"></div>
+    <div class="tbl-scroll" style="max-height:300px;">
+      <table>
+        <thead><tr><th>支払年月</th><th class="n">課税支給額</th><th class="n">通勤費</th><th class="n">合計</th><th>備考</th><th></th></tr></thead>
+        <tbody id="actual-tbody"></tbody>
+      </table>
+    </div>
+    <div class="empty" id="actual-empty" hidden>まだ記録がありません</div>
+  </div>
+</section>
+
+<!-- ============================== WALLS ============================== -->
+<section class="page" id="page-walls" role="tabpanel" hidden>
+  <div id="walls-banners"></div>
+
+  <div class="card">
+    <div class="card-head">
+      <h2>年収の壁</h2>
+      <span class="chip" id="walls-year-chip">-</span>
+      <span class="spacer"></span>
+      <span class="chip" id="walls-verified-chip">-</span>
+    </div>
+    <div class="tiles" style="margin-bottom:14px;">
+      <div class="tile"><div class="k">判定に使う給与収入</div><div class="v tnum" id="w-basis">-</div><div class="s">非課税通勤費を除いた額</div></div>
+      <div class="tile"><div class="k">通勤費を含む収入</div><div class="v tnum" id="w-basis-commute">-</div><div class="s">社保の扶養だけこちらで判定</div></div>
+      <div class="tile"><div class="k">年末着地予想</div><div class="v tnum" id="w-projection">-</div><div class="s" id="w-projection-sub">-</div></div>
+      <div class="tile"><div class="k">うち受取済み</div><div class="v tnum" id="w-received">-</div><div class="s" id="w-received-sub">-</div></div>
+    </div>
+    <div id="wall-meters"></div>
+    <div class="hr"></div>
+    <div class="note tight">
+      表示される壁はプロフィール設定（年齢・学生か・扶養に入っているか・続柄）によって変わります。
+      バーの縦線は年末着地予想の位置です。制度は改正されることがあるので、最終判断は必ず公式情報でご確認ください。
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>超えた・近づいた時の対応</h2></div>
+    <div class="note" style="margin-bottom:6px;">
+      残りが20%を切った壁について、準備事項とやることを表示します。チェックは自動保存されます。
+    </div>
+  </div>
+  <div id="overage-list"></div>
+</section>
+
+<!-- ============================== SETTINGS ============================== -->
+<section class="page" id="page-settings" role="tabpanel" hidden>
+  <div class="card">
+    <div class="card-head"><h2>プロフィール</h2></div>
+    <div class="grid">
+      <div class="field"><label for="s-age">年齢(12/31時点)</label><input type="number" id="s-age" min="0" max="120" step="1" inputmode="numeric"></div>
+      <div class="field"><label for="s-student">学生ですか</label>
+        <select id="s-student"><option value="">選択してください</option><option value="true">はい</option><option value="false">いいえ</option></select>
+      </div>
+      <div class="field" id="wrap-tokurei"><label for="s-tokurei">学生納付特例を利用中</label>
+        <select id="s-tokurei"><option value="">選択してください</option><option value="true">はい</option><option value="false">いいえ</option></select>
+      </div>
+      <div class="field"><label for="s-dep-tax">税法上の扶養に入っている</label>
+        <select id="s-dep-tax"><option value="">選択してください</option><option value="true">はい</option><option value="false">いいえ</option></select>
+      </div>
+      <div class="field" id="wrap-rel"><label for="s-rel">扶養している方との続柄</label>
+        <select id="s-rel">
+          <option value="other">配偶者以外の親族(親の子・孫など)</option>
+          <option value="spouse">配偶者(夫・妻)</option>
+        </select>
+      </div>
+      <div class="field" id="wrap-rate"><label for="s-rate">扶養している方の所得税率</label>
+        <select id="s-rate">
+          <option value="0.05">5%（課税所得195万円以下）</option>
+          <option value="0.10">10%（〜330万円）</option>
+          <option value="0.20">20%（〜695万円）</option>
+          <option value="0.23">23%（〜900万円）</option>
+          <option value="0.33">33%（〜1,800万円）</option>
+        </select>
+      </div>
+      <div class="field"><label for="s-dep-shaho">社会保険の扶養に入っている</label>
+        <select id="s-dep-shaho"><option value="">選択してください</option><option value="true">はい</option><option value="false">いいえ</option></select>
+      </div>
+    </div>
+    <div class="note" style="margin-top:12px;">
+      「学生かどうか」と「年齢」は別々に扱っています。特定親族特別控除や社会保険の150万円ラインは
+      <b>19〜22歳という年齢だけ</b>で決まり、在学中かどうかは関係ありません。逆に学生納付特例や
+      社会保険の学生除外は、年齢ではなく在学しているかで決まります。<br>
+      「扶養している方の所得税率」は、壁を超えた時に<b>相手側</b>の税負担がどれだけ増えるかの概算に使います。
+      分からなければ10%のままで構いません。
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>バイト先</h2><span class="chip" id="jobs-count">0件</span></div>
+    <div id="jobs-list"></div>
+    <button class="btn ghost block" id="btn-add-job" type="button" style="margin-top:8px;">＋ バイト先を追加</button>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>祝日カレンダー</h2><span class="chip" id="holiday-count">0件</span></div>
+    <div class="btn-row">
+      <button class="btn ghost sm" id="btn-fetch-holidays" type="button">🌐 祝日を自動取得</button>
+    </div>
+    <div class="note tight" id="holiday-status" style="margin-top:8px;"></div>
+    <div class="hr"></div>
+    <div class="grid">
+      <div class="field"><label for="s-holiday-add">祝日を手動で追加</label><input type="date" id="s-holiday-add"></div>
+      <div class="field"><label>&nbsp;</label><button class="btn ghost" id="btn-add-holiday" type="button">追加</button></div>
+    </div>
+    <div class="tbl-scroll" style="max-height:200px; margin-top:12px;">
+      <table><tbody id="holiday-tbody"></tbody></table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>保存先</h2><span class="chip" id="storage-chip">-</span></div>
+    <div class="note" id="storage-note" style="margin-bottom:12px;"></div>
+    <div class="btn-row">
+      <button class="btn ghost sm" id="btn-connect-fs" type="button">📁 保存先ファイルを選ぶ</button>
+      <button class="btn sm" id="btn-reconnect-fs" type="button" hidden>🔄 接続を再開</button>
+      <button class="btn ghost sm" id="btn-disconnect-fs" type="button" hidden>同期を解除</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>バックアップ</h2></div>
+    <div class="note" style="margin-bottom:12px;">
+      書き出した <code>.json</code> ファイルがあれば、別の端末やブラウザでもそのまま復元できます。
+      <b>ブラウザの閲覧データを消すと入力内容も消えるので、こまめに書き出しておくと安心です。</b>
+    </div>
+    <div class="btn-row">
+      <button class="btn ghost sm" id="btn-export" type="button">⬇ 書き出す(.json)</button>
+      <button class="btn ghost sm" id="btn-import" type="button">⬆ 読み込む</button>
+      <input type="file" id="file-import" accept=".json,application/json,text/json,text/plain" class="sr-only">
+    </div>
+    <div class="note tight" id="backup-status" style="margin-top:8px;"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>データの保存とプライバシー</h2></div>
+    <div class="note">
+      <b>入力したデータは、この端末のブラウザの中（localStorage）だけに保存されます。</b>
+      サーバーには一切送信されないため、作者を含め誰も見ることはできません。
+      このページが公開URLにあっても、他の人に見えるのは空のアプリだけです。
+      <div class="hr"></div>
+      覚えておいてほしいこと:
+      <ul style="margin:6px 0 0; padding-left:1.2em;">
+        <li>ブラウザの閲覧データを削除すると、入力内容も一緒に消えます</li>
+        <li>スマホとパソコンでデータは共有されません（書き出し・読み込みで移せます）</li>
+        <li>外部に接続するのは「祝日の自動取得」だけです（holidays-jp.github.io）。
+            この時も、あなたのデータは送信しません</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>初期設定</h2></div>
+    <div class="note" style="margin-bottom:12px;">
+      最初のセットアップ画面をもう一度開きます。入力済みのシフトや実績は消えません。
+    </div>
+    <button class="btn ghost block" id="btn-rerun-setup" type="button">初期セットアップをやり直す</button>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>データの初期化</h2></div>
+    <div class="note" style="margin-bottom:12px;">
+      シフト・実績・バイト先・設定をすべて削除して、まっさらな状態に戻します。取り消せません。
+    </div>
+    <button class="btn danger block" id="btn-reset" type="button">すべてのデータをリセット</button>
+  </div>
+</section>
+
+</main>
+
+<script>
+/* ==========================================================================
+   給与ノート — バイト給与 / 年収の壁トラッカー
+   単一HTMLファイルで動作。外部依存なし。
+   ========================================================================== */
+
+'use strict';
+
+/* --------------------------------------------------------------------------
+   0. 小物ユーティリティ
+   -------------------------------------------------------------------------- */
+const $  = (id) => document.getElementById(id);
+const pad = (n) => (n < 10 ? '0' + n : '' + n);
+const ESC_MAP = { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' };
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ESC_MAP[c]);
+const yen = (n) => '¥' + Math.round(n || 0).toLocaleString('ja-JP');
+const man = (n) => (n / 10000).toLocaleString('ja-JP', { maximumFractionDigits: 1 }) + '万円';
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+
+const toKey   = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+const parseYMD = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+const addDays = (dateKey, n) => { const d = parseYMD(dateKey); d.setDate(d.getDate() + n); return toKey(d); };
+const timeToHours = (t) => { const [h, m] = t.split(':').map(Number); return h + m / 60; };
+const WD = ['日','月','火','水','木','金','土'];
+const fmtDate = (d) => `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
+const fmtMD   = (d) => `${d.getMonth() + 1}/${d.getDate()}`;
+
+/* 「はい/いいえ/未回答」の3状態。空文字は null（未回答）として扱う。
+   const は巻き上がらないため、参照側より前で宣言しておく必要がある。 */
+const triState = (v) => (v === '' || v === null || v === undefined) ? null : (v === 'true' || v === true);
+const selVal   = (v) => (v === null || v === undefined) ? '' : String(v);
+
+function roundBy(v, mode) {
+  if (mode === 'floor') return Math.floor(v);
+  if (mode === 'ceil')  return Math.ceil(v);
+  return Math.round(v);
+}
+
+/* --------------------------------------------------------------------------
+   1. 税制データ（年分ごと）
+
+   出典と根拠:
+   - 令和7年度税制改正 … 基礎控除58万(+特例)、給与所得控除最低保障額65万
+   - 令和8年度税制改正 … 令和8年12月1日施行・令和8年分以後の所得税に適用
+       基礎控除   本則62万 + 租特加算42万 = 104万（合計所得489万円以下）
+       給与所得控除 最低保障 本則69万 + 特例5万 = 74万（給与収入220万円以下）
+       → 所得税の非課税ライン 104 + 74 = 178万円
+       扶養親族・同一生計配偶者の合計所得金額要件 58万 → 62万
+       → 扶養控除のライン 62 + 74 = 136万円
+     加算42万・特例5万は令和8年分・令和9年分限りの時限措置。
+     令和10年分以降は物価スライドで再設定される方針のため未確定。
+   - 住民税 … 非課税限度額は合計所得45万円（単身・1級地）、基礎控除43万円は据置き
+       → 令和8年中の収入に対する住民税(令和9年度)の非課税ライン 45 + 74 = 119万円
+   -------------------------------------------------------------------------- */
+const TAX_VERIFIED = '2026-09-16';
+
+const TAX_TABLE = {
+  2025: {
+    era: '令和7年分',
+    kyuyoKojoMin: 650000,      // 給与所得控除の最低保障額
+    juuminzeiHikazei: 450000,  // 住民税 非課税限度額(合計所得・単身1級地)
+    juuminzeiKiso: 430000,     // 住民税 基礎控除
+    shotokuzei:   1600000,     // 所得税が発生しない給与収入の上限
+    juuminzei:    1100000,     // 住民税が発生しない給与収入の上限
+    fuyou:        1230000,     // 扶養控除・配偶者控除の対象となる給与収入の上限
+    tokuteiFull:  1500000,     // 特定親族特別控除が満額(63万)となる上限
+    tokuteiZero:  1880000,     // 特定親族特別控除がゼロになる点
+    haigushaFull: 1600000,     // 配偶者特別控除が満額(38万)となる上限
+    haigushaZero: 2016000,     // 配偶者特別控除がゼロになる点
+    provisional: false
+  },
+  2026: {
+    era: '令和8年分',
+    kyuyoKojoMin: 740000,
+    juuminzeiHikazei: 450000,
+    juuminzeiKiso: 430000,
+    shotokuzei:   1780000,
+    juuminzei:    1190000,
+    fuyou:        1360000,
+    tokuteiFull:  1590000,
+    tokuteiZero:  1970000,
+    haigushaFull: 1690000,
+    haigushaZero: 2070000,
+    provisional: false
+  },
+  2027: {
+    era: '令和9年分',
+    kyuyoKojoMin: 740000,
+    juuminzeiHikazei: 450000,
+    juuminzeiKiso: 430000,
+    shotokuzei:   1780000,
+    juuminzei:    1190000,
+    fuyou:        1360000,
+    tokuteiFull:  1590000,
+    tokuteiZero:  1970000,
+    haigushaFull: 1690000,
+    haigushaZero: 2070000,
+    provisional: false
+  }
+};
+
+/* 社会保険まわりの定数 */
+const SI = {
+  /* 短時間労働者の社会保険加入における賃金要件（月8.8万円＝年106万円）は
+     2025年6月成立の年金制度改正法により 2026年10月1日 に廃止。
+     以後の判定は「週の所定労働時間20時間以上」等が中心になる。 */
+  wageReqAbolishedOn: '2026-10-01',
+  wageReqAnnual: 1060000,
+  /* 被扶養者の年間収入要件。19歳以上23歳未満(配偶者を除く)は
+     2025年10月1日以降の認定分から150万円未満。 */
+  fuyou130: 1300000,
+  fuyou150: 1500000,
+  /* 国民年金保険料 令和8年度 月額17,920円 */
+  nenkinMonthly: 17920,
+  /* 社会保険料の本人負担のざっくり率（健保+厚年、報酬の約15%） */
+  premiumRate: 0.15,
+  /* 国民健康保険料のざっくり率（自治体差が大きいので目安） */
+  kokuhoRate: 0.10
+};
+
+const FUKKO = 1.021;          // 復興特別所得税
+const JUUMIN_RATE = 0.10;     // 住民税 所得割
+const JUUMIN_KINTO = 5000;    // 住民税 均等割 + 森林環境税
+const JUUMIN_CHOSEI = 2500;   // 調整控除(課税所得200万円以下の一般的なケース)
+
+/* 住民税側の人的控除額（所得税との差額計算用） */
+const JUUMIN_KOJO = { fuyou: 330000, tokutei: 450000, haigusha: 330000 };
+const SHOTOKU_KOJO = { fuyou: 380000, tokutei: 630000, haigusha: 380000 };
+
+function taxYearData(year) {
+  if (TAX_TABLE[year]) return { ...TAX_TABLE[year], year, fallback: null };
+  const years = Object.keys(TAX_TABLE).map(Number).sort((a, b) => a - b);
+  const src = year < years[0] ? years[0] : years[years.length - 1];
+  return { ...TAX_TABLE[src], year, era: `${year}年`, provisional: true, fallback: src };
+}
+
+/* --------------------------------------------------------------------------
+   2. 既定データ
+   -------------------------------------------------------------------------- */
+const DEFAULT_HOLIDAYS = [
+  ['2026-01-01','元日'],['2026-01-12','成人の日'],['2026-02-11','建国記念の日'],
+  ['2026-02-23','天皇誕生日'],['2026-03-20','春分の日'],['2026-04-29','昭和の日'],
+  ['2026-05-03','憲法記念日'],['2026-05-04','みどりの日'],['2026-05-05','こどもの日'],
+  ['2026-05-06','休日'],['2026-07-20','海の日'],['2026-08-11','山の日'],
+  ['2026-09-21','敬老の日'],['2026-09-22','国民の休日'],['2026-09-23','秋分の日'],
+  ['2026-10-12','スポーツの日'],['2026-11-03','文化の日'],['2026-11-23','勤労感謝の日'],
+  ['2027-01-01','元日'],['2027-01-11','成人の日'],['2027-02-11','建国記念の日'],
+  ['2027-02-23','天皇誕生日'],['2027-03-21','春分の日'],['2027-03-22','休日'],
+  ['2027-04-29','昭和の日'],['2027-05-03','憲法記念日'],['2027-05-04','みどりの日'],
+  ['2027-05-05','こどもの日'],['2027-07-19','海の日'],['2027-08-11','山の日'],
+  ['2027-09-20','敬老の日'],['2027-09-23','秋分の日'],['2027-10-11','スポーツの日'],
+  ['2027-11-03','文化の日'],['2027-11-23','勤労感謝の日']
+];
+
+/* 金額・時間帯・締め日の実値は一切持たない。初回セットアップで入力してもらう。
+   ここにあるのは「型を満たすための中立な初期値」だけ。 */
+const JOB_DEFAULTS = {
+  baseWage: 0,
+  wageBands: [],
+  sunAdd: 0,
+  tripFare: 0,
+  passFare: 0,
+  passThreshold: 0,
+  commuteTaxExempt: true,
+  cutoffDay: 0,            // 月末締め（最も一般的な慣行）
+  paymentMonthsAfter: 1,   // 翌月払い
+  paymentDay: 25,          // 25日払い
+  holidayAdjustment: 'before',
+  /* 追加された計算オプション */
+  autoNightPremium: false,   // 法定深夜割増(22:00-05:00, +25%)を自動で乗せる
+  autoOvertimePremium: false,// 法定時間外割増(1日8時間超, +25%)を自動で乗せる
+  roundingScope: 'daily',    // 'daily' | 'monthly' — 円未満をどの単位で丸めるか
+  roundingMode: 'round',     // 'round' | 'floor' | 'ceil'
+  timeRoundUnit: 0,          // 実働時間の丸め(分)。0なら丸めない
+  timeRoundMode: 'floor'     // 'floor' | 'round'
+};
+
+function makeJob(over) {
+  return Object.assign({ id: 'job-' + uid(), name: 'バイト先1', wageBands: [] },
+                       JSON.parse(JSON.stringify(JOB_DEFAULTS)), over || {});
+}
+
+/* null は「未回答」。初回セットアップで埋まるまで、その項目に依存する壁は出さない。 */
+const DEFAULT_PROFILE = {
+  age: null,
+  isStudent: null,
+  usesGakuseiTokurei: null,
+  dependentTax: null,
+  dependentSocialInsurance: null,
+  dependentRelationship: 'other',
+  supporterTaxRate: 0.10
+};
+
+let STATE = {
+  shifts: [],            // {id, jobId, date, start, end, breakMin, breakStart?}
+  holidays: {},          // {'YYYY-MM-DD': name}
+  actualPayments: [],    // {id, jobId, month:'YYYY-MM', taxable, commute, note}
+  cycleCorrections: {},  // {[jobId]: {'YYYY-MM': {wage, commute}}}
+  overageChecklist: {},  // {[wallKey]: {[idx]: bool}}
+  jobs: [],
+  activeJobId: null,
+  settings: { profile: JSON.parse(JSON.stringify(DEFAULT_PROFILE)), setupDone: false },
+  /* UI 状態（保存しない） */
+  activeTab: 'home',
+  activeYear: new Date().getFullYear(),
+  cycleKey: null,
+  chartAsTable: false
+};
+
+/* --------------------------------------------------------------------------
+   3. 保存層（Claudeストレージ / File System Access / localStorage）
+   -------------------------------------------------------------------------- */
+const LS_PREFIX = 'mbsk_';
+const PERSIST_KEYS = ['shifts','holidays','actualPayments','cycleCorrections',
+                      'overageChecklist','jobs','activeJobId','settings'];
+let FS_HANDLE = null, FS_CACHE = null, PENDING_FS_HANDLE = null;
+
+function idbOpen() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('mbsk_fs_db', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('kv');
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function idbGet(k) {
+  const db = await idbOpen();
+  return new Promise((res, rej) => {
+    const rq = db.transaction('kv', 'readonly').objectStore('kv').get(k);
+    rq.onsuccess = () => res(rq.result || null);
+    rq.onerror = () => rej(rq.error);
+  });
+}
+async function idbSet(k, v) {
+  const db = await idbOpen();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('kv', 'readwrite');
+    tx.objectStore('kv').put(v, k);
+    tx.oncomplete = () => res();
+    tx.onerror = () => rej(tx.error);
+  });
+}
+async function idbDel(k) {
+  const db = await idbOpen();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('kv', 'readwrite');
+    tx.objectStore('kv').delete(k);
+    tx.oncomplete = () => res();
+    tx.onerror = () => rej(tx.error);
+  });
+}
+
+async function writeFsCache() {
+  if (!FS_HANDLE) return;
+  try {
+    const w = await FS_HANDLE.createWritable();
+    await w.write(JSON.stringify(FS_CACHE ?? {}, null, 2));
+    await w.close();
+  } catch (e) { console.error('fs write failed', e); }
+}
+
+async function loadJSON(key, fallback) {
+  try {
+    if (window.storage) {
+      const r = await window.storage.get(key, false);
+      return r ? JSON.parse(r.value) : fallback;
+    }
+    if (FS_CACHE && key in FS_CACHE) return FS_CACHE[key];
+    const v = localStorage.getItem(LS_PREFIX + key);
+    return v ? JSON.parse(v) : fallback;
+  } catch (e) { return fallback; }
+}
+async function saveJSON(key, value) {
+  try {
+    if (window.storage) { await window.storage.set(key, JSON.stringify(value), false); return; }
+    localStorage.setItem(LS_PREFIX + key, JSON.stringify(value));
+    if (FS_HANDLE) { FS_CACHE = FS_CACHE || {}; FS_CACHE[key] = value; await writeFsCache(); }
+  } catch (e) { console.error('save failed', key, e); }
+}
+const save = (key) => saveJSON(key, STATE[key]);
+
+async function useFsHandle(handle) {
+  FS_HANDLE = handle;
+  try { await idbSet('fsHandle', handle); } catch (e) {}
+  let existing = null;
+  try {
+    const text = await (await handle.getFile()).text();
+    if (text && text.trim()) existing = JSON.parse(text);
+  } catch (e) {}
+  if (existing && Object.keys(existing).length) {
+    FS_CACHE = existing;
+  } else {
+    FS_CACHE = {};
+    PERSIST_KEYS.forEach((k) => { FS_CACHE[k] = STATE[k]; });
+    await writeFsCache();
+  }
+  await hydrate();
+  PENDING_FS_HANDLE = null;
+  renderStorage();
+  renderAll();
+}
+async function connectFs() {
+  if (!window.showSaveFilePicker) {
+    alert('このブラウザはファイル指定保存に対応していません。PCのChrome/EdgeでこのHTMLを直接開くか、バックアップの書き出しをご利用ください。');
+    return;
+  }
+  try {
+    const h = await window.showSaveFilePicker({
+      suggestedName: 'salary_tracker_data.json',
+      types: [{ description: 'JSON file', accept: { 'application/json': ['.json'] } }]
+    });
+    await useFsHandle(h);
+  } catch (e) { /* キャンセル */ }
+}
+async function reconnectFs() {
+  if (!PENDING_FS_HANDLE) return;
+  try {
+    const p = await PENDING_FS_HANDLE.requestPermission({ mode: 'readwrite' });
+    if (p === 'granted') await useFsHandle(PENDING_FS_HANDLE);
+    else alert('アクセスが許可されませんでした。');
+  } catch (e) {
+    alert('接続に失敗しました。「保存先ファイルを選ぶ」からやり直してください。');
+  }
+}
+async function disconnectFs() {
+  FS_HANDLE = null; FS_CACHE = null;
+  try { await idbDel('fsHandle'); } catch (e) {}
+  renderStorage();
+}
+async function tryRestoreFs() {
+  try {
+    const h = await idbGet('fsHandle');
+    if (!h) return;
+    const p = await h.queryPermission({ mode: 'readwrite' });
+    if (p === 'granted') await useFsHandle(h); else PENDING_FS_HANDLE = h;
+  } catch (e) {}
+}
+
+/* --------------------------------------------------------------------------
+   4. 日付 / 給与サイクル
+   -------------------------------------------------------------------------- */
+const isHoliday = (key) => !!STATE.holidays[key];
+const dayType = (key) => {
+  const d = parseYMD(key);
+  return (d.getDay() === 0 || isHoliday(key)) ? 'holiday' : 'weekday';
+};
+const getJob = (id) => STATE.jobs.find((j) => j.id === id) || STATE.jobs[0] || null;
+
+/* day=0 は「月末」。それ以外はその月の日数でクランプ */
+function dayOfMonth(y, mIdx, day) {
+  if (day === 0) return new Date(y, mIdx + 1, 0);
+  const dim = new Date(y, mIdx + 1, 0).getDate();
+  return new Date(y, mIdx, Math.min(day, dim));
+}
+/* サイクルキー = 締め日が属する月 'YYYY-MM' */
+function cycleKeyForDate(d, job) {
+  const y = d.getFullYear(), m = d.getMonth();
+  const cutoff = dayOfMonth(y, m, job.cutoffDay);
+  if (d <= cutoff) return y + '-' + pad(m + 1);
+  const nx = new Date(y, m + 1, 1);
+  return nx.getFullYear() + '-' + pad(nx.getMonth() + 1);
+}
+function cycleRange(key, job) {
+  const [y, m] = key.split('-').map(Number);
+  const end = dayOfMonth(y, m - 1, job.cutoffDay);
+  const prev = new Date(y, m - 2, 1);
+  const pc = dayOfMonth(prev.getFullYear(), prev.getMonth(), job.cutoffDay);
+  return { start: new Date(pc.getFullYear(), pc.getMonth(), pc.getDate() + 1), end };
+}
+function cyclePayDate(key, job) {
+  const [y, m] = key.split('-').map(Number);
+  const pm = new Date(y, (m - 1) + (job.paymentMonthsAfter || 0), 1);
+  let d = dayOfMonth(pm.getFullYear(), pm.getMonth(), job.paymentDay);
+  const adj = job.holidayAdjustment || 'before';
+  if (adj !== 'none') {
+    const dir = adj === 'after' ? 1 : -1;
+    let guard = 0;
+    while ((d.getDay() === 0 || d.getDay() === 6 || isHoliday(toKey(d))) && guard++ < 30) {
+      d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + dir);
+    }
+  }
+  return d;
+}
+function cycleLabel(key, job) {
+  const { start, end } = cycleRange(key, job);
+  return `${fmtMD(start)} 〜 ${fmtMD(end)} 締`;
+}
+
+/* --------------------------------------------------------------------------
+   5. 給与計算エンジン
+   -------------------------------------------------------------------------- */
+const NIGHT_START = 22, NIGHT_END = 5, LEGAL_DAILY = 8;
+const isNightHour = (h) => (h >= NIGHT_START || h < NIGHT_END);
+
+/* シフトを「時間帯の切れ目」で細分化する。
+   日をまたぐシフト(例 22:00→翌06:00)にも対応するため、時間帯の境界は
+   日数分だけ複製して 24h を超える座標にも置く。 */
+function shiftSegments(shift, job) {
+  let start = timeToHours(shift.start);
+  let end   = timeToHours(shift.end);
+  if (end <= start) end += 24;               // 日またぎ
+
+  const pts = new Set([start, end]);
+  const add = (v) => { if (v > start + 1e-9 && v < end - 1e-9) pts.add(v); };
+  const days = Math.ceil(end / 24);
+  for (let d = 0; d <= days; d++) {
+    (job.wageBands || []).forEach((b) => {
+      add(timeToHours(b.start) + 24 * d);
+      add(timeToHours(b.end)   + 24 * d);
+    });
+    add(NIGHT_START + 24 * d);   // 深夜帯の境目
+    add(NIGHT_END   + 24 * d);
+    add(24 * d);                 // 日付の境目（日祝判定が変わる）
+  }
+
+  /* 休憩時刻が記録されていれば、その区間をピンポイントで無給にする */
+  let brkFrom = null, brkTo = null;
+  const brkH = (Number(shift.breakMin) || 0) / 60;
+  if (shift.breakStart && brkH > 0) {
+    brkFrom = timeToHours(shift.breakStart);
+    if (brkFrom < start) brkFrom += 24;
+    brkTo = brkFrom + brkH;
+    add(brkFrom); add(brkTo);
+  }
+
+  const sorted = [...pts].sort((a, b) => a - b);
+  const segs = [];
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const s = sorted[i], e = sorted[i + 1];
+    if (e - s < 1e-9) continue;
+    if (brkFrom !== null && s >= brkFrom - 1e-9 && e <= brkTo + 1e-9) continue;  // 休憩
+    segs.push({ from: s, to: e, hours: e - s });
+  }
+  return { segs, start, end, brkH, brkExact: brkFrom !== null };
+}
+
+/* その区間に適用される単価と、その区間が属する日の区分 */
+function segmentRate(seg, shift, job) {
+  const dayOffset = Math.floor(seg.from / 24 + 1e-9);
+  const dateKey = dayOffset === 0 ? shift.date : addDays(shift.date, dayOffset);
+  const type = dayType(dateKey);
+  const hour = seg.from - 24 * dayOffset;
+  const band = (job.wageBands || []).find((b) => {
+    const bs = timeToHours(b.start), be = timeToHours(b.end);
+    return hour >= bs - 1e-9 && hour < be - 1e-9;
+  });
+  let rate = (Number(job.baseWage) || 0) + (band ? (Number(band.addon) || 0) : 0);
+  if (type === 'holiday') rate += (Number(job.sunAdd) || 0);
+  return { rate, type, hour, dateKey };
+}
+
+/* 1シフトの給与。pay は丸め前の実数、payRounded は「日ごと」設定での丸め後。 */
+function calcShift(shift) {
+  const job = getJob(shift.jobId);
+  const zero = { pay: 0, payRounded: 0, hours: 0, type: 'weekday', nightHours: 0, otHours: 0 };
+  if (!job) return zero;
+
+  const { segs, brkH, brkExact } = shiftSegments(shift, job);
+  if (!segs.length) return zero;
+
+  const rated = segs.map((s) => ({ ...s, ...segmentRate(s, shift, job) }));
+  const rawHours = rated.reduce((a, s) => a + s.hours, 0);
+
+  /* 休憩時刻の指定がなければ、実働時間から按分して差し引く */
+  let factor = 1;
+  if (!brkExact && brkH > 0 && rawHours > 0) factor = Math.max(0, (rawHours - brkH) / rawHours);
+
+  /* 実働時間の丸め（分単位）。全区間を比例して伸縮させる */
+  const unit = Number(job.timeRoundUnit) || 0;
+  if (unit > 0) {
+    const paid = rawHours * factor;
+    const step = unit / 60;
+    const target = job.timeRoundMode === 'round'
+      ? Math.round(paid / step) * step
+      : Math.floor(paid / step + 1e-9) * step;
+    if (paid > 0) factor *= (target / paid);
+  }
+
+  let pay = 0, hours = 0, cum = 0, nightHours = 0, otHours = 0;
+  const night = !!job.autoNightPremium, over = !!job.autoOvertimePremium;
+
+  rated.forEach((s) => {
+    let remain = s.hours * factor;
+    const isNight = night && isNightHour(s.hour);
+    let guard = 0;
+    while (remain > 1e-9 && guard++ < 64) {
+      /* 8時間の境目でちょうど区切る */
+      const toBoundary = LEGAL_DAILY - cum;
+      const chunk = (over && toBoundary > 1e-9 && toBoundary < remain) ? toBoundary : remain;
+      let mult = 1;
+      if (isNight) { mult += 0.25; nightHours += chunk; }
+      if (over && cum >= LEGAL_DAILY - 1e-9) { mult += 0.25; otHours += chunk; }
+      pay += s.rate * mult * chunk;
+      cum += chunk; hours += chunk; remain -= chunk;
+    }
+  });
+
+  const type = rated[0].type;
+  return { pay, payRounded: roundBy(pay, job.roundingMode), hours, type, nightHours, otHours };
+}
+
+/* 丸めの単位設定に従って「このシフトの表示上の日給」を返す */
+function shiftPay(shift) {
+  const job = getJob(shift.jobId);
+  const r = calcShift(shift);
+  return (job && job.roundingScope === 'monthly') ? r.pay : r.payRounded;
+}
+
+/* --------------------------------------------------------------------------
+   6. サイクル集計
+   -------------------------------------------------------------------------- */
+function cycleComputed(key, jobId) {
+  const job = getJob(jobId);
+  if (!job) return { inCycle: [], workDays: 0, wage: 0, commute: 0, usePass: false };
+  const { start, end } = cycleRange(key, job);
+  const inCycle = STATE.shifts
+    .filter((s) => s.jobId === jobId)
+    .filter((s) => { const d = parseYMD(s.date); return d >= start && d <= end; })
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+  const workDays = new Set(inCycle.map((s) => s.date)).size;
+  const rawWage = inCycle.reduce((sum, s) => sum + calcShift(s).pay, 0);
+  const wage = job.roundingScope === 'monthly'
+    ? roundBy(rawWage, job.roundingMode)
+    : inCycle.reduce((sum, s) => sum + calcShift(s).payRounded, 0);
+
+  const usePass = job.passThreshold > 0 && workDays >= job.passThreshold;
+  const commute = usePass ? (Number(job.passFare) || 0)
+                          : workDays * (Number(job.tripFare) || 0);
+  return { inCycle, workDays, wage, commute, usePass };
+}
+
+function cycleEffective(key, jobId) {
+  const c = cycleComputed(key, jobId);
+  const corr = (STATE.cycleCorrections[jobId] || {})[key] || {};
+  const has = (v) => v !== undefined && v !== null && v !== '';
+  const wage = has(corr.wage) ? Number(corr.wage) : c.wage;
+  const commute = has(corr.commute) ? Number(corr.commute) : c.commute;
+  return { ...c, wage, commute,
+           wageCorrected: has(corr.wage), commuteCorrected: has(corr.commute) };
+}
+
+function allCycleKeys(jobId) {
+  const job = getJob(jobId);
+  if (!job) return [];
+  const keys = new Set();
+  STATE.shifts.filter((s) => s.jobId === jobId)
+    .forEach((s) => keys.add(cycleKeyForDate(parseYMD(s.date), job)));
+  Object.keys(STATE.cycleCorrections[jobId] || {}).forEach((k) => keys.add(k));
+  keys.add(cycleKeyForDate(new Date(), job));
+  return [...keys].sort();
+}
+
+/* --------------------------------------------------------------------------
+   7. 年間集計
+
+   収入の帰属年は「支払日」で判定する（所得税法上、給与所得の収入すべき時期は
+   支給日とされているため）。締め日ベースで集計すると12月締め1月払いの分が
+   ずれるので、ここは意図的に支払日基準。
+   -------------------------------------------------------------------------- */
+function annualAggregate(year) {
+  const now = new Date();
+  let scheduledWage = 0, scheduledCommute = 0;      // 年内に支払日が来る全て（未払い含む）
+  let receivedWage  = 0, receivedCommute  = 0;      // すでに支払日を迎えた分だけ
+  let taxableCommute = 0;                           // 課税扱いの通勤費のみ
+  const perJob = [];
+  const monthly = {};                               // 'M' -> { [jobName]: 額 }
+  let firstPayMonth = null, lastPayMonth = null, lastReceivedMonth = null;
+  let nextPay = null;
+
+  const bump = (month, label, wage) => {
+    if (!monthly[month]) monthly[month] = {};
+    monthly[month][label] = (monthly[month][label] || 0) + wage;
+  };
+
+  STATE.jobs.forEach((job) => {
+    let jw = 0, jc = 0;
+    allCycleKeys(job.id).forEach((key) => {
+      const eff = cycleEffective(key, job.id);
+      if (!eff.inCycle.length && !eff.wageCorrected) return;
+      const pd = cyclePayDate(key, job);
+      if (pd.getFullYear() !== year) return;
+      const m = pd.getMonth() + 1;
+
+      scheduledWage += eff.wage; scheduledCommute += eff.commute;
+      jw += eff.wage; jc += eff.commute;
+      bump(m, job.name, eff.wage);
+      if (firstPayMonth === null || m < firstPayMonth) firstPayMonth = m;
+      if (lastPayMonth === null || m > lastPayMonth) lastPayMonth = m;
+
+      if (pd <= now) {
+        receivedWage += eff.wage; receivedCommute += eff.commute;
+        if (lastReceivedMonth === null || m > lastReceivedMonth) lastReceivedMonth = m;
+      } else if (!nextPay || pd < nextPay.date) {
+        nextPay = { date: pd, amount: eff.wage + eff.commute, job: job.name };
+      }
+    });
+    if (!job.commuteTaxExempt) taxableCommute += jc;
+    if (jw || jc) perJob.push({ name: job.name, wage: jw, commute: jc });
+  });
+
+  /* 手入力の実績。支払年月の月末を「受け取った時点」とみなす。 */
+  STATE.actualPayments.forEach((p) => {
+    const [y, m] = p.month.split('-').map(Number);
+    if (y !== year) return;
+    const eom = new Date(y, m, 0);
+    const label = (STATE.jobs.find((j) => j.id === p.jobId) || {}).name || '手入力';
+    scheduledWage += p.taxable; scheduledCommute += (p.commute || 0);
+    bump(m, label, p.taxable);
+    if (firstPayMonth === null || m < firstPayMonth) firstPayMonth = m;
+    if (lastPayMonth === null || m > lastPayMonth) lastPayMonth = m;
+    if (eom <= now) {
+      receivedWage += p.taxable; receivedCommute += (p.commute || 0);
+      if (lastReceivedMonth === null || m > lastReceivedMonth) lastReceivedMonth = m;
+    }
+  });
+
+  /* ---- 月平均ペース ----
+     「最新支払月の月番号」で割ると、年の途中で働き始めた人のペースが
+     極端に薄まり、壁の警告が鳴らなくなる。初回支払月からの経過月数で割る。 */
+  const monthsElapsed = (firstPayMonth !== null && lastReceivedMonth !== null)
+    ? Math.max(1, lastReceivedMonth - firstPayMonth + 1)
+    : 0;
+  const pace = monthsElapsed > 0 ? receivedWage / monthsElapsed : 0;
+  const commutePace = monthsElapsed > 0 ? receivedCommute / monthsElapsed : 0;
+
+  /* 着地予想 = 予定として判明している分 + 残り月数 × 直近ペース */
+  const knownThrough = lastPayMonth || 0;
+  const remaining = Math.max(0, 12 - knownThrough);
+  const projection = scheduledWage + pace * remaining;
+  const projectionCommute = scheduledCommute + commutePace * remaining;
+
+  /* 壁の判定基礎
+     - 給与収入ベース: 課税対象の支給額（非課税通勤費は除く）
+     - 社保の扶養ベース: 非課税の通勤手当も含めた収入 */
+  const wageBasis = scheduledWage + taxableCommute;
+  const wageBasisProjection = projection + (taxableCommute > 0 ? (projectionCommute - scheduledCommute) : 0);
+  const fullBasis = scheduledWage + scheduledCommute;
+  const fullBasisProjection = projection + projectionCommute;
+
+  return {
+    year, perJob, monthly,
+    scheduledWage, scheduledCommute, receivedWage, receivedCommute,
+    taxableCommute, exemptCommute: scheduledCommute - taxableCommute,
+    pace, monthsElapsed, projection, projectionCommute,
+    wageBasis, wageBasisProjection, fullBasis, fullBasisProjection,
+    firstPayMonth, lastPayMonth, lastReceivedMonth, knownThrough, nextPay,
+    hasFuture: scheduledWage !== receivedWage
+  };
+}
+
+/* --------------------------------------------------------------------------
+   8. 年収の壁の定義
+   -------------------------------------------------------------------------- */
+function siWageRequirementActive(year) {
+  /* 賃金要件(月8.8万/年106万)が、その年のどこかで有効だったか */
+  const abolish = parseYMD(SI.wageReqAbolishedOn);
+  return year <= abolish.getFullYear();
+}
+
+function generateWalls(year) {
+  const p = STATE.settings.profile;
+  const T = taxYearData(year);
+  const age = Number(p.age) || 0;
+  const rel = p.dependentRelationship || 'other';
+  const studentAge = rel !== 'spouse' && age >= 19 && age <= 22;
+  const walls = [];
+
+  walls.push({
+    key: 'juuminzei', name: '住民税', amount: T.juuminzei, basis: 'wage',
+    note: `超えると翌年度から住民税がかかり始めます。最初に均等割+森林環境税の${yen(JUUMIN_KINTO)}、`
+        + `さらに超過が進むと超過額のおよそ10%が所得割として上乗せされます。`
+        + `（${T.era}の収入に対する住民税＝${year + 1}年度分。非課税限度額${man(T.juuminzeiHikazei)}＋給与所得控除${man(T.kyuyoKojoMin)}）`,
+    src: '総務省（個人住民税）',
+    url: 'https://www.soumu.go.jp/main_sosiki/jichi_zeisei/czaisei/czaisei_seido/149767_03.html'
+  });
+
+  if (p.dependentSocialInsurance && siWageRequirementActive(year)) {
+    const abolishDate = parseYMD(SI.wageReqAbolishedOn);
+    const ended = new Date() >= abolishDate;
+    const base = p.isStudent
+      ? '<b>在学中の学生は、そもそもこの加入義務の対象外</b>です（学生除外）。'
+      : '週20時間以上・2ヶ月超の雇用見込み・従業員51人以上の勤務先、といった条件を満たすと社会保険への加入義務が生じます。';
+    walls.push({
+      key: 'shakaihoken20h', name: '社会保険の加入（賃金要件）', amount: SI.wageReqAnnual, basis: 'wage',
+      note: base + `<br><b>${ended ? 'この賃金要件は2026年10月1日に廃止されました。' : 'この賃金要件は2026年10月1日に廃止されます。'}</b>`
+          + '以後は「月8.8万円以上（年106万円）」という金額基準は無くなり、週の所定労働時間20時間以上かどうかが中心の判定になります。'
+          + '金額で調整するのではなく、シフトの時間数で勤務先と相談してください。',
+      src: '日本年金機構（短時間労働者の適用拡大）',
+      url: 'https://www.nenkin.go.jp/tokusetsu/tekiyokakudai_kojin.html',
+      sunset: true
+    });
+  }
+
+  if (p.dependentTax) {
+    if (rel === 'spouse') {
+      walls.push({
+        key: 'haigusha', name: '配偶者控除・配偶者特別控除', amount: T.haigushaFull, basis: 'wage',
+        note: `${man(T.fuyou)}までは配偶者控除で満額38万円。超えても${man(T.haigushaFull)}までは配偶者特別控除で満額38万円が維持され、`
+            + `そこから${man(T.haigushaZero)}に向けて段階的に減っていきます（${man(T.haigushaZero)}超でゼロ）。`
+            + 'バーの基準は「満額が維持される上限」です。',
+        src: '国税庁 No.1195 配偶者特別控除',
+        url: 'https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1195.htm'
+      });
+    } else if (studentAge) {
+      walls.push({
+        key: 'tokutei', name: '特定扶養控除・特定親族特別控除', amount: T.tokuteiFull, basis: 'wage',
+        note: `${man(T.fuyou)}までは特定扶養控除で満額63万円。超えても${man(T.tokuteiFull)}までは特定親族特別控除で満額63万円が維持され、`
+            + `そこから${man(T.tokuteiZero)}に向けて段階的に減っていきます（${man(T.tokuteiZero)}超でゼロ）。`
+            + 'この扱いは在学しているかに関係なく、12月31日時点の年齢が19〜22歳であれば対象です。',
+        src: '国税庁 No.1177 特定親族特別控除',
+        url: 'https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1177.htm'
+      });
+    } else {
+      const caveat = age < 16 ? '（16歳未満は扶養控除の対象外で、児童手当等の対象になります）' : '';
+      walls.push({
+        key: 'fuyoukojo', name: '扶養控除', amount: T.fuyou, basis: 'wage',
+        note: `1円でも超えると扶養控除（38万円）が丸ごと無くなる「崖」です。19〜22歳のような段階的な緩和措置はありません。${caveat}`
+            + `（扶養親族の合計所得金額要件${man(T.fuyou - T.kyuyoKojoMin)}＋給与所得控除${man(T.kyuyoKojoMin)}）`,
+        src: '国税庁 No.1180 扶養控除',
+        url: 'https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1180.htm',
+        cliff: true
+      });
+    }
+  }
+
+  if (p.dependentSocialInsurance) {
+    const amount = studentAge ? SI.fuyou150 : SI.fuyou130;
+    const ageNote = studentAge
+      ? '<b>2025年10月1日以降の認定分から、19〜22歳（配偶者を除く）は130万円ではなく150万円が収入要件です。</b>在学しているかは関係なく、年齢だけで決まります。'
+      : '';
+    const nenkin = p.isStudent
+      ? (p.usesGakuseiTokurei
+          ? `学生納付特例を利用中とのことなので、在学中の国民年金保険料は猶予され実質0円です（追納は任意）。`
+          : `学生納付特例は未利用とのこと。20歳以上は納付義務があり年額${yen(SI.nenkinMonthly * 12)}（令和8年度・月額${yen(SI.nenkinMonthly)}）です。まず学生納付特例の申請をおすすめします。`)
+      : `20歳以上は国民年金の納付義務があり年額${yen(SI.nenkinMonthly * 12)}（令和8年度・月額${yen(SI.nenkinMonthly)}）です（低所得なら免除制度あり）。`;
+    walls.push({
+      key: 'shakaihoken130', name: '社会保険上の扶養', amount, basis: 'wagePlusCommute',
+      note: `${ageNote}超えると扶養している方の健康保険の扶養から外れ、自分で国民健康保険（または勤務先の社保）に加入します。`
+          + '<b>この壁だけは非課税の通勤手当も収入に含めて判定</b>するため、バーの金額も通勤費込みです。<br>'
+          + `国民年金は130万円の壁とは別の話です: ${nenkin}`,
+      src: '日本年金機構（被扶養者の収入要件）',
+      url: 'https://www.nenkin.go.jp/service/kounen/tekiyo/hihokensha1/20141202.html'
+    });
+  }
+
+  walls.push({
+    key: 'shotokuzei', name: '所得税（自分）', amount: T.shotokuzei, basis: 'wage',
+    note: `${T.era}はここまで自分の所得税がかかりません（給与所得控除${man(T.kyuyoKojoMin)}＋基礎控除${man(T.shotokuzei - T.kyuyoKojoMin)}）。`
+        + '超えた分にはおおよそ5.105%（所得税5%＋復興特別所得税）が課税されます。'
+        + (year === 2026 || year === 2027
+            ? 'この金額は令和8年分・令和9年分限りの時限措置によるもので、令和10年分以降は物価に応じて再設定される見込みです。'
+            : ''),
+    src: '国税庁 令和8年度税制改正による基礎控除の引上げ等',
+    url: 'https://www.nta.go.jp/users/gensen/2026kiso/index.htm'
+  });
+
+  return walls.sort((a, b) => a.amount - b.amount);
+}
+
+/* 壁を超えた時の負担増の概算 */
+function wallImpact(wall, excess, agg, year) {
+  const p = STATE.settings.profile;
+  const T = taxYearData(year);
+  const e = Math.max(excess, 0);
+  const rate = Number(p.supporterTaxRate) || 0.10;
+  const ratio = (full, zero) => clamp((excess) / Math.max(1, zero - full), 0, 1);
+
+  switch (wall.key) {
+    case 'juuminzei': {
+      /* 均等割 + 所得割。課税標準 = 合計所得 - 住民税基礎控除。
+         非課税限度額(45万)と基礎控除(43万)の差の分だけ、超えた瞬間に課税標準が乗る。 */
+      const head = T.juuminzeiHikazei - T.juuminzeiKiso;
+      const shotokuwari = Math.max(0, (e + head) * JUUMIN_RATE - JUUMIN_CHOSEI);
+      return { amount: JUUMIN_KINTO + shotokuwari, who: '自分', exact: false };
+    }
+    case 'shakaihoken20h':
+      /* 保険料は「超過額」ではなく収入全体にかかる */
+      return { amount: agg.wageBasis * SI.premiumRate, who: '自分',
+               whole: true, exact: false };
+    case 'shakaihoken130': {
+      const nenkin = (p.isStudent && p.usesGakuseiTokurei) ? 0 : SI.nenkinMonthly * 12;
+      return { amount: agg.fullBasis * SI.kokuhoRate + nenkin, who: '自分',
+               whole: true, exact: false, spread: true };
+    }
+    case 'fuyoukojo':
+      return { amount: SHOTOKU_KOJO.fuyou * rate * FUKKO + JUUMIN_KOJO.fuyou * JUUMIN_RATE,
+               who: '扶養している方', cliff: true, exact: false };
+    case 'tokutei': {
+      const r = ratio(T.tokuteiFull, T.tokuteiZero);
+      return { amount: r * (SHOTOKU_KOJO.tokutei * rate * FUKKO + JUUMIN_KOJO.tokutei * JUUMIN_RATE),
+               who: '扶養している方', gradual: true, ratio: r, exact: false };
+    }
+    case 'haigusha': {
+      const r = ratio(T.haigushaFull, T.haigushaZero);
+      return { amount: r * (SHOTOKU_KOJO.haigusha * rate * FUKKO + JUUMIN_KOJO.haigusha * JUUMIN_RATE),
+               who: '配偶者', gradual: true, ratio: r, exact: false };
+    }
+    case 'shotokuzei':
+      return { amount: e * 0.05105, who: '自分', exact: false };
+    default:
+      return null;
+  }
+}
+
+/* 壁を超えた/近づいた時のやること */
+function wallActions(key) {
+  switch (key) {
+    case 'juuminzei': return { deadline: null, items: [
+      'すぐ必要な手続きはありません（通常は自動で計算されます）',
+      `翌年6月ごろに住民税の納税通知が届くので金額を確認する`,
+      '給与天引き（特別徴収）か自分で納付（普通徴収）かを勤務先に確認しておくと安心'
+    ]};
+    case 'shakaihoken20h': return { deadline: '条件を満たした月から（勤務先の判断による）', items: [
+      '勤務先の労務・人事担当に、週の所定労働時間と月収の状況を伝えて相談する',
+      '2026年10月以降は金額ではなく「週20時間以上かどうか」が判定の中心になることを踏まえて、シフトの組み方を相談する',
+      '在学中の学生なら学生除外の対象なので、その旨を勤務先に伝える',
+      '加入すると給与から保険料が天引きされるので、以降の手取りを確認する'
+    ]};
+    case 'tokutei': case 'fuyoukojo': case 'haigusha': return {
+      deadline: '年末調整の書類提出期限まで（勤務先による、通常11月ごろ）', items: [
+      '扶養している方（親・配偶者）に、今年の収入がラインを超えたことを伝える',
+      '相手の勤務先に出している「扶養控除等（異動）申告書」の訂正が必要か確認してもらう',
+      '年末調整の時期（11〜12月ごろ）までに伝えれば、通常はそこで清算できる',
+      '掛け持ちで、メインでない勤務先の収入が年20万円を超える場合は自分の確定申告が必要になることがある'
+    ]};
+    case 'shakaihoken130': return {
+      deadline: '扶養から外れた事実発生からできるだけ早く（目安5〜14日以内、健保組合による）', items: [
+      '扶養している方の勤務先（健康保険組合）に「被扶養者異動届」の提出が必要なので早めに伝える',
+      '扶養から外れたら、勤務先の社会保険に入るか、市区町村で国民健康保険の加入手続きをする',
+      '国民年金は第1号被保険者としての届出が必要（学生なら学生納付特例の申請も忘れずに）',
+      '手続きが遅れると、扶養から外れた期間の医療費を後から精算することになる場合があるので注意'
+    ]};
+    case 'shotokuzei': return { deadline: '確定申告が必要な場合は翌年3/15まで', items: [
+      '通常は勤務先の年末調整で精算されるので、追加の手続きは基本的に不要',
+      '2箇所以上でバイトしている場合、メインでない方（従たる給与）の収入が年20万円を超えると確定申告が必要',
+      '確定申告が必要なら、翌年2/16ごろ〜3/15に税務署または国税庁のサイトから申告する'
+    ]};
+    default: return { deadline: null, items: ['詳細は国税庁・日本年金機構の公式情報をご確認ください'] };
+  }
+}
+
+/* ステータスは色だけで区別させない。形の違うアイコン + 文言をセットで出す。 */
+const SVG_OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">';
+const STATUS_ICON = {
+  good:    SVG_OPEN + '<circle cx="12" cy="12" r="9"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg>',
+  warn:    SVG_OPEN + '<path d="M12 4 2.8 20h18.4Z"/><path d="M12 10v4"/><path d="M12 17.2h.01"/></svg>',
+  serious: SVG_OPEN + '<path d="m3 16 5.5-5.5 3.5 3.5L21 5"/><path d="M15.5 5H21v5.5"/></svg>',
+  crit:    SVG_OPEN + '<path d="M8.6 3h6.8L21 8.6v6.8L15.4 21H8.6L3 15.4V8.6Z"/><path d="m9.5 9.5 5 5"/><path d="m14.5 9.5-5 5"/></svg>'
+};
+const statusIcon = (level) => `<span class="status-ico">${STATUS_ICON[level] || STATUS_ICON.good}</span>`;
+
+/* 壁ひとつ分の状態（進捗率・ステータス）を計算 */
+function wallStatus(wall, agg) {
+  const base = wall.basis === 'wagePlusCommute' ? agg.fullBasis : agg.wageBasis;
+  const proj = wall.basis === 'wagePlusCommute' ? agg.fullBasisProjection : agg.wageBasisProjection;
+  const pct = wall.amount > 0 ? base / wall.amount : 0;
+  const projPct = wall.amount > 0 ? proj / wall.amount : 0;
+  let level = 'good', label = '余裕あり';
+  if (pct >= 1)          { level = 'crit';    label = '超えています'; }
+  else if (projPct >= 1) { level = 'serious'; label = 'このペースだと年内に超えます'; }
+  else if (pct >= 0.8)   { level = 'warn';    label = '残り20%を切りました'; }
+  return { base, proj, pct, projPct, level, label, ico: statusIcon(level),
+           remaining: wall.amount - base, excess: base - wall.amount };
+}
+
+/* --------------------------------------------------------------------------
+   9. 月次チャート（積み上げ棒 + ホバー + 表ビュー）
+   -------------------------------------------------------------------------- */
+const SERIES_VARS = ['--series-1', '--series-2', '--series-3', '--series-4'];
+const MAX_SERIES = 4;
+
+/* 月次データを「系列(バイト先) × 12ヶ月」に整形。5件目以降は「その他」にまとめる。 */
+function monthlySeries(agg) {
+  const totals = {};
+  Object.values(agg.monthly).forEach((row) => {
+    Object.entries(row).forEach(([name, v]) => { totals[name] = (totals[name] || 0) + v; });
+  });
+  const names = Object.keys(totals).sort((a, b) => totals[b] - totals[a]);
+  const keep = names.slice(0, MAX_SERIES);
+  const rest = names.slice(MAX_SERIES);
+  const series = keep.map((n, i) => ({ name: n, varName: SERIES_VARS[i] }));
+  if (rest.length) series.push({ name: 'その他', varName: SERIES_VARS[MAX_SERIES - 1] });
+
+  const months = [];
+  for (let m = 1; m <= 12; m++) {
+    const row = agg.monthly[m] || {};
+    const parts = series.map((s) => {
+      if (s.name === 'その他') return rest.reduce((a, n) => a + (row[n] || 0), 0);
+      return row[s.name] || 0;
+    });
+    months.push({ m, parts, total: parts.reduce((a, b) => a + b, 0) });
+  }
+  return { series, months, hasData: names.length > 0 };
+}
+
+/* 目盛りがちょうど4等分になり、かつラベルがキリのいい数字になる上限を選ぶ
+   （3.8万・11.3万 のような半端な目盛りを出さないため） */
+function niceScale(maxV) {
+  if (maxV <= 0) return { max: 40000, step: 10000 };
+  const rough = maxV / 4;
+  const mag = Math.pow(10, Math.floor(Math.log10(rough)));
+  const step = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]
+    .map((m) => m * mag)
+    .find((s) => s >= rough - 1e-9) || 10 * mag;
+  return { max: step * 4, step };
+}
+
+function renderMonthlyChart(agg) {
+  const host = $('monthly-chart');
+  const legendEl = $('monthly-legend');
+  const tableEl = $('monthly-table');
+  const data = monthlySeries(agg);
+
+  if (!data.hasData) {
+    host.innerHTML = '<div class="empty">この年の収入データがまだありません</div>';
+    legendEl.innerHTML = ''; tableEl.innerHTML = '';
+    return;
+  }
+
+  /* --- 表ビュー（コントラストが低い系列色の relief も兼ねる） --- */
+  tableEl.innerHTML = `<div class="tbl-scroll"><table>
+    <thead><tr><th>月</th>${data.series.map((s) => `<th class="n">${esc(s.name)}</th>`).join('')}<th class="n">合計</th></tr></thead>
+    <tbody>${data.months.filter((x) => x.total > 0).map((x) => `<tr>
+      <td class="n">${x.m}月</td>
+      ${x.parts.map((v) => `<td class="n">${v ? yen(v) : '—'}</td>`).join('')}
+      <td class="n"><b>${yen(x.total)}</b></td>
+    </tr>`).join('')}</tbody></table></div>`;
+
+  /* --- 凡例（系列が2つ以上なら常に表示） --- */
+  legendEl.innerHTML = data.series.length > 1
+    ? data.series.map((s) => `<span class="legend-item">
+        <span class="swatch" style="background:var(${s.varName})"></span>${esc(s.name)}</span>`).join('')
+    : '';
+
+  /* コンテナの実幅に合わせて座標系を作る。固定 viewBox のままPC幅に広げると、
+     縦横比が保たれる分だけ高さが伸びて棒が間延びする。 */
+  const measured = Math.round(host.getBoundingClientRect().width) || 720;
+  const W = clamp(measured, 360, 1100);
+  const H = W >= 900 ? 260 : W >= 620 ? 230 : 200;
+  const padL = 52, padR = 10, padT = 14, padB = 24;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const scale = niceScale(Math.max(...data.months.map((x) => x.total)));
+  const maxV = scale.max;
+  const y = (v) => padT + plotH - (v / maxV) * plotH;
+  const slot = plotW / 12;
+  const barW = Math.min(30, slot * 0.6);
+
+  /* 目盛りは4本。控えめなヘアライン。 */
+  const ticks = [0, 1, 2, 3, 4].map((i) => i * scale.step);
+  const grid = ticks.map((t) => `
+    <line x1="${padL}" x2="${W - padR}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}"
+          stroke="var(${t === 0 ? '--axis' : '--grid'})" stroke-width="1"/>
+    <text x="${padL - 7}" y="${(y(t) + 3.5).toFixed(1)}" text-anchor="end"
+          font-size="10" fill="var(--ink-3)" style="font-variant-numeric:tabular-nums">
+      ${t === 0 ? '0' : (t / 10000).toLocaleString('ja-JP', { maximumFractionDigits: 1 }) + '万'}
+    </text>`).join('');
+
+  /* 直接ラベルは「最大の月」と「直近の月」だけ（全点に数字は置かない） */
+  const withData = data.months.filter((x) => x.total > 0);
+  const maxMonth = withData.reduce((a, b) => (b.total > a.total ? b : a), withData[0]);
+  const lastMonth = withData[withData.length - 1];
+  const labelled = new Set([maxMonth && maxMonth.m, lastMonth && lastMonth.m]);
+
+  const bars = data.months.map((row) => {
+    const cx = padL + slot * (row.m - 0.5);
+    const x = cx - barW / 2;
+    if (row.total <= 0) {
+      return `<text x="${cx.toFixed(1)}" y="${H - padB + 14}" text-anchor="middle"
+                 font-size="10" fill="var(--ink-3)">${row.m}</text>`;
+    }
+    let acc = 0;
+    const segs = row.parts.map((v, i) => {
+      if (v <= 0) return '';
+      const y0 = y(acc + v), y1 = y(acc);
+      acc += v;
+      const isTop = acc >= row.total - 1e-6;
+      let h = y1 - y0;
+      /* 積み上げの境目に2pxのすき間を入れて、面同士をはっきり分ける */
+      const gap = (i < row.parts.length - 1 && !isTop) ? 2 : 0;
+      h = Math.max(1, h - gap);
+      const r = isTop ? 4 : 0;
+      return `<rect x="${x.toFixed(1)}" y="${y0.toFixed(1)}" width="${barW.toFixed(1)}"
+                 height="${h.toFixed(1)}" rx="${r}" ry="${r}"
+                 fill="var(${data.series[i].varName})"/>`;
+    }).join('');
+    const lab = labelled.has(row.m)
+      ? `<text x="${cx.toFixed(1)}" y="${(y(row.total) - 6).toFixed(1)}" text-anchor="middle"
+             font-size="10" font-weight="700" fill="var(--ink-2)"
+             style="font-variant-numeric:tabular-nums">${(row.total / 10000).toFixed(1)}万</text>`
+      : '';
+    return `${segs}${lab}
+      <text x="${cx.toFixed(1)}" y="${H - padB + 14}" text-anchor="middle"
+            font-size="10" font-weight="700" fill="var(--ink-2)">${row.m}</text>
+      <rect class="hit" x="${(cx - slot / 2).toFixed(1)}" y="${padT}" width="${slot.toFixed(1)}"
+            height="${plotH}" fill="transparent" data-month="${row.m}" style="cursor:pointer"/>`;
+  }).join('');
+
+  host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img"
+      aria-label="${agg.year}年の月ごとの給与収入">${grid}${bars}</svg>`;
+
+  /* --- ホバー --- */
+  const tip = $('chart-tooltip');
+  const wrap = $('monthly-chart-wrap');
+  host.querySelectorAll('.hit').forEach((hit) => {
+    const show = (ev) => {
+      const m = Number(hit.dataset.month);
+      const row = data.months[m - 1];
+      if (!row || row.total <= 0) { tip.classList.remove('on'); return; }
+      tip.innerHTML = `<div class="tt-t">${agg.year}年${m}月 支払分</div>`
+        + data.series.map((s, i) => row.parts[i] > 0
+            ? `<div class="tt-r"><span class="swatch" style="background:var(${s.varName})"></span>
+                 <span>${esc(s.name)}</span><span class="n tnum">${yen(row.parts[i])}</span></div>` : '').join('')
+        + `<div class="tt-r" style="border-top:1px solid var(--line); margin-top:5px; padding-top:5px;">
+             <span>合計</span><span class="n tnum">${yen(row.total)}</span></div>`;
+      const wr = wrap.getBoundingClientRect();
+      const hr = hit.getBoundingClientRect();
+      tip.style.left = (hr.left - wr.left + hr.width / 2) + 'px';
+      tip.style.top = (hr.top - wr.top - 6) + 'px';
+      tip.classList.add('on');
+    };
+    hit.addEventListener('mouseenter', show);
+    hit.addEventListener('mousemove', show);
+    hit.addEventListener('click', show);
+    hit.addEventListener('mouseleave', () => tip.classList.remove('on'));
+  });
+}
+
+/* --------------------------------------------------------------------------
+   10. 壁メーターの描画
+   -------------------------------------------------------------------------- */
+function meterHTML(wall, st, opts) {
+  const o = opts || {};
+  const projPos = clamp(st.projPct * 100, 0, 100);
+  const showProj = st.projPct > st.pct + 0.01 && st.pct < 1;
+  return `<div class="meter">
+    <div class="meter-head">
+      <span class="meter-name">${esc(wall.name)}</span>
+      <span class="meter-limit tnum">${man(wall.amount)}</span>
+      <span class="meter-val tnum">${yen(st.base)}</span>
+    </div>
+    <div class="track">
+      <div class="fill ${st.level === 'good' ? '' : st.level}" style="width:${clamp(st.pct * 100, 0, 100).toFixed(1)}%"></div>
+      ${showProj ? `<div class="proj-mark" style="left:calc(${projPos.toFixed(1)}% - 1px)" title="年末着地予想"></div>` : ''}
+    </div>
+    <div class="meter-foot s-${st.level}">
+      ${st.ico}
+      <span>${st.label}</span>
+      <span style="margin-left:auto; color:var(--ink-2); font-weight:600;" class="tnum">
+        ${st.pct >= 1 ? `超過 ${yen(st.excess)}` : `あと ${yen(st.remaining)}`}
+      </span>
+    </div>
+    ${o.note === false ? '' : `<details class="acc" style="margin-top:9px; margin-bottom:0;">
+      <summary style="font-size:12px; font-weight:700; padding:8px 11px;">この壁について</summary>
+      <div class="acc-body" style="padding:0 11px 11px;">
+        <div class="meter-note" style="margin-top:0;">${wall.note}</div>
+        <div class="meter-src">最終確認 ${TAX_VERIFIED} ・
+          <a href="${wall.url}" target="_blank" rel="noopener" style="color:var(--brand); font-weight:700;">${esc(wall.src)} ↗</a></div>
+      </div></details>`}
+  </div>`;
+}
+
+/* --------------------------------------------------------------------------
+   11. 各ページの描画
+   -------------------------------------------------------------------------- */
+function renderTabs() {
+  const setup = inSetup();
+  document.querySelectorAll('#tabbar button').forEach((b) => {
+    b.setAttribute('aria-selected', String(b.dataset.tab === STATE.activeTab));
+  });
+  ['home','entry','pay','walls','settings'].forEach((t) => {
+    $('page-' + t).hidden = setup || (t !== STATE.activeTab);
+  });
+  const needsJob = !setup && (STATE.activeTab === 'entry' || STATE.activeTab === 'pay');
+  $('job-select').style.display = needsJob ? '' : 'none';
+}
+
+function renderChrome() {
+  /* 年セレクタ: データのある年 + 今年 + 前後1年 */
+  const years = new Set([new Date().getFullYear(), STATE.activeYear]);
+  STATE.jobs.forEach((job) => allCycleKeys(job.id).forEach((k) => {
+    years.add(cyclePayDate(k, job).getFullYear());
+  }));
+  STATE.actualPayments.forEach((p) => years.add(Number(p.month.split('-')[0])));
+  const list = [...years].filter(Boolean).sort();
+  const ySel = $('year-select');
+  ySel.innerHTML = list.map((y) => `<option value="${y}" ${y === STATE.activeYear ? 'selected' : ''}>${y}年</option>`).join('');
+
+  const jSel = $('job-select');
+  jSel.innerHTML = STATE.jobs.map((j) =>
+    `<option value="${esc(j.id)}" ${j.id === STATE.activeJobId ? 'selected' : ''}>${esc(j.name)}</option>`).join('');
+}
+
+function renderHome(agg) {
+  const T = taxYearData(STATE.activeYear);
+  $('home-year-chip').textContent = `${STATE.activeYear}年 / ${T.era}`;
+  $('home-basis-chip').textContent = agg.hasFuture ? '予定を含む' : '支払済みのみ';
+  $('home-total').textContent = yen(agg.scheduledWage);
+  $('home-total-sub').textContent = agg.scheduledCommute
+    ? `＋通勤費 ${yen(agg.scheduledCommute)}` : '';
+
+  $('home-period').textContent = agg.firstPayMonth
+    ? `${agg.firstPayMonth}月〜${agg.lastPayMonth}月の支払分${agg.hasFuture ? '（まだ振り込まれていない予定額を含みます）' : ''}`
+    : 'まだデータがありません';
+
+  $('home-pace').textContent = agg.monthsElapsed ? yen(agg.pace) : '—';
+  $('home-pace-sub').textContent = agg.monthsElapsed
+    ? `受取済み ${agg.monthsElapsed}ヶ月分から算出` : '受取済みの給与がありません';
+  $('home-projection').textContent = agg.monthsElapsed || agg.scheduledWage ? yen(agg.projection) : '—';
+  $('home-projection-sub').textContent = agg.knownThrough
+    ? `${agg.knownThrough}月分まで確定 ＋ 残り${Math.max(0, 12 - agg.knownThrough)}ヶ月を現ペースで` : '—';
+
+  if (agg.nextPay) {
+    $('home-nextpay').textContent = fmtMD(agg.nextPay.date) + `(${WD[agg.nextPay.date.getDay()]})`;
+    $('home-nextpay-sub').textContent = `${esc(agg.nextPay.job)} ${yen(agg.nextPay.amount)}`;
+  } else {
+    $('home-nextpay').textContent = '—';
+    $('home-nextpay-sub').textContent = '予定されている支払いはありません';
+  }
+  $('home-commute').textContent = yen(agg.exemptCommute);
+
+  /* バナー */
+  const banners = [];
+  if (T.provisional) {
+    banners.push(`<div class="banner warn"><span class="bi">⚠️</span><div>
+      <b>${STATE.activeYear}年の税制は未確定です。</b>
+      ${T.fallback}年分の数値を暫定的に当てはめて表示しています。実際の判断は必ず最新の公式情報でご確認ください。</div></div>`);
+  }
+  const abolish = parseYMD(SI.wageReqAbolishedOn);
+  const daysToAbolish = Math.ceil((abolish - new Date()) / 86400000);
+  if (daysToAbolish > 0 && daysToAbolish <= 120) {
+    banners.push(`<div class="banner info"><span class="bi">📌</span><div>
+      <b>あと${daysToAbolish}日で「106万円の壁」が無くなります。</b>
+      2026年10月1日に社会保険加入の賃金要件（月8.8万円以上）が廃止され、以後は週の所定労働時間20時間以上かどうかが判定の中心になります。</div></div>`);
+  }
+  $('home-banners').innerHTML = banners.join('');
+
+  renderMonthlyChart(agg);
+  $('monthly-chart-wrap').hidden = STATE.chartAsTable;
+  $('monthly-legend').hidden = STATE.chartAsTable;
+  $('monthly-table').hidden = !STATE.chartAsTable;
+  $('toggle-chart-table').textContent = STATE.chartAsTable ? 'グラフで見る' : '表で見る';
+
+  /* いちばん近い壁 */
+  const walls = generateWalls(STATE.activeYear);
+  const ranked = walls.map((w) => ({ w, st: wallStatus(w, agg) }))
+    .sort((a, b) => b.st.pct - a.st.pct);
+  const top = ranked.slice(0, 3);
+  $('home-walls').innerHTML = top.length
+    ? top.map(({ w, st }) => meterHTML(w, st, { note: false })).join('')
+    : '<div class="empty">プロフィール設定により、該当する壁がありません</div>';
+}
+
+function renderEntry() {
+  const job = getJob(STATE.activeJobId);
+  $('entry-job-chip').textContent = job ? job.name : '—';
+
+  /* よく使う時間帯 */
+  const counts = {};
+  STATE.shifts.filter((s) => s.jobId === STATE.activeJobId)
+    .forEach((s) => { const k = s.start + '-' + s.end; counts[k] = (counts[k] || 0) + 1; });
+  const frequent = Object.entries(counts).filter(([, c]) => c >= 3)
+    .sort((a, b) => b[1] - a[1]).slice(0, 6);
+  $('quick-shifts').innerHTML = frequent.map(([k, c]) => {
+    const [s, e] = k.split('-');
+    return `<button type="button" data-qs-start="${s}" data-qs-end="${e}">${s}〜${e} <span style="opacity:.6">${c}回</span></button>`;
+  }).join('');
+
+  renderPreview();
+
+  /* 一覧 */
+  const list = STATE.shifts.filter((s) => s.jobId === STATE.activeJobId)
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  $('shift-count').textContent = list.length + '件';
+  const tbody = $('shift-tbody');
+  $('shift-empty').hidden = list.length > 0;
+  tbody.innerHTML = list.map((s) => {
+    const r = calcShift(s);
+    const d = parseYMD(s.date);
+    const over = timeToHours(s.end) <= timeToHours(s.start);
+    const marks = [];
+    if (r.type === 'holiday')  marks.push('<span class="badge hol">日祝</span>');
+    if (over)                  marks.push('<span class="badge ovn">日跨ぎ</span>');
+    if (r.nightHours > 0)      marks.push('<span class="badge">深夜</span>');
+    if (r.otHours > 0)         marks.push('<span class="badge">残業</span>');
+    if (s.breakMin)            marks.push(`<span class="badge">休${s.breakMin}分</span>`);
+    return `<tr>
+      <td class="n">${s.date.slice(5)}<span class="wd">(${WD[d.getDay()]})</span></td>
+      <td class="n">${s.start}-${s.end}
+        ${marks.length ? `<div class="badges" style="justify-content:flex-end">${marks.join('')}</div>` : ''}</td>
+      <td class="n">${r.hours.toFixed(2)}h</td>
+      <td class="n"><b>${yen(shiftPay(s))}</b></td>
+      <td class="act"><button class="x-btn" data-del-shift="${esc(s.id)}" type="button"
+        aria-label="${esc(s.date)} のシフトを削除">×</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function renderPreview() {
+  const date = $('in-date').value;
+  const start = $('in-start-h').value + ':' + $('in-start-m').value;
+  const end   = $('in-end-h').value + ':' + $('in-end-m').value;
+  const brk   = Number($('in-break').value) || 0;
+  const bs    = $('in-break-start').value || '';
+  const body  = $('entry-preview-body');
+  if (!date || !STATE.activeJobId) {
+    body.textContent = '日付を入力すると見込み日給を表示します。';
+    return;
+  }
+  const r = calcShift({ date, start, end, breakMin: brk, breakStart: bs, jobId: STATE.activeJobId });
+  const job = getJob(STATE.activeJobId);
+  const overnight = timeToHours(end) <= timeToHours(start);
+  const extras = [];
+  if (r.nightHours > 0) extras.push(`深夜割増 ${r.nightHours.toFixed(2)}h`);
+  if (r.otHours > 0) extras.push(`時間外割増 ${r.otHours.toFixed(2)}h`);
+  body.innerHTML = `${r.type === 'holiday' ? '日曜・祝日' : '平日'}扱い`
+    + `${overnight ? ' / <b>日をまたぐ勤務</b>' : ''}`
+    + ` ・ 実働 <b>${r.hours.toFixed(2)}時間</b> ・ 見込み日給 <b class="tnum">${yen(shiftPay({ date, start, end, breakMin: brk, breakStart: bs, jobId: STATE.activeJobId }))}</b>`
+    + (extras.length ? `<br><span style="color:var(--ink-3)">${extras.join(' / ')}</span>` : '')
+    + (job && job.roundingScope === 'monthly'
+        ? '<br><span style="color:var(--ink-3)">※ 円未満は月合計で丸める設定のため、実際の支給額とは数円ずれることがあります</span>' : '');
+}
+
+function renderPay() {
+  const jobId = STATE.activeJobId;
+  const job = getJob(jobId);
+  if (!job) return;
+  const keys = allCycleKeys(jobId);
+  if (!STATE.cycleKey || !keys.includes(STATE.cycleKey)) {
+    /* 既定は「いま進行中のサイクル」。未来日のシフトを先に登録していても、
+       開いた瞬間に今月の締め分が出るようにする。 */
+    const current = cycleKeyForDate(new Date(), job);
+    STATE.cycleKey = keys.includes(current) ? current : keys[keys.length - 1];
+  }
+  $('cycle-select').innerHTML = keys.map((k) => {
+    const pd = cyclePayDate(k, job);
+    return `<option value="${k}" ${k === STATE.cycleKey ? 'selected' : ''}>${cycleLabel(k, job)} → ${fmtMD(pd)}払</option>`;
+  }).join('');
+
+  const key = STATE.cycleKey;
+  const c = cycleComputed(key, jobId);
+  const eff = cycleEffective(key, jobId);
+  const corr = (STATE.cycleCorrections[jobId] || {})[key] || {};
+
+  $('cy-days').innerHTML = c.workDays + '<small>日</small>';
+  $('cy-wage').textContent = yen(eff.wage);
+  $('cy-wage-sub').textContent = eff.wageCorrected ? `訂正済（計算値 ${yen(c.wage)}）` : '計算値';
+  $('cy-commute').textContent = yen(eff.commute);
+  $('cy-commute-sub').textContent = eff.commuteCorrected
+    ? `訂正済（計算値 ${yen(c.commute)}）`
+    : (c.usePass ? `定期券代（${job.passThreshold}日以上勤務）` : `往復${yen(job.tripFare)}×${c.workDays}日`);
+  $('cy-total').textContent = yen(eff.wage + eff.commute);
+
+  const pd = cyclePayDate(key, job);
+  const cutoff = job.cutoffDay === 0 ? '月末' : job.cutoffDay + '日';
+  const payLbl = job.paymentMonthsAfter === 0 ? '当月' : job.paymentMonthsAfter === 1 ? '翌月' : `${job.paymentMonthsAfter}ヶ月後`;
+  const payDay = job.paymentDay === 0 ? '月末' : job.paymentDay + '日';
+  $('cy-payday').textContent = `${fmtDate(pd)}(${WD[pd.getDay()]}) ${cutoff}締 ${payLbl}${payDay}払`;
+
+  $('cy-wage-corr').value = corr.wage ?? '';
+  $('cy-commute-corr').value = corr.commute ?? '';
+  $('cy-wage-corr').placeholder = `予定通り (${yen(c.wage)})`;
+  $('cy-commute-corr').placeholder = `予定通り (${yen(c.commute)})`;
+
+  $('cycle-empty').hidden = c.inCycle.length > 0;
+  $('cycle-tbody').innerHTML = c.inCycle.map((s) => {
+    const r = calcShift(s);
+    const d = parseYMD(s.date);
+    return `<tr>
+      <td class="n">${s.date.slice(5)}<span class="wd">(${WD[d.getDay()]})</span></td>
+      <td>${r.type === 'holiday' ? '<span class="badge hol">日祝</span>' : '<span class="wd">—</span>'}</td>
+      <td class="n">${s.start}-${s.end}</td>
+      <td class="n">${r.hours.toFixed(2)}h</td>
+      <td class="n">${yen(shiftPay(s))}</td>
+    </tr>`;
+  }).join('');
+
+  /* 受取済みの記録 */
+  const list = STATE.actualPayments.filter((p) => p.jobId === jobId)
+    .sort((a, b) => (a.month < b.month ? 1 : -1));
+  $('actual-count').textContent = list.length + '件';
+  $('actual-empty').hidden = list.length > 0;
+  $('actual-tbody').innerHTML = list.map((p) => `<tr>
+    <td class="n">${esc(p.month)}</td>
+    <td class="n">${yen(p.taxable)}</td>
+    <td class="n">${yen(p.commute)}</td>
+    <td class="n"><b>${yen(p.taxable + (p.commute || 0))}</b></td>
+    <td>${esc(p.note || '')}</td>
+    <td class="act"><button class="x-btn" data-del-actual="${esc(p.id)}" type="button"
+      aria-label="${esc(p.month)} の記録を削除">×</button></td>
+  </tr>`).join('');
+}
+
+function renderWalls(agg) {
+  const T = taxYearData(STATE.activeYear);
+  $('walls-year-chip').textContent = `${STATE.activeYear}年 / ${T.era}`;
+  $('walls-verified-chip').textContent = `最終確認 ${TAX_VERIFIED}`;
+  $('w-basis').textContent = yen(agg.wageBasis);
+  $('w-basis-commute').textContent = yen(agg.fullBasis);
+  $('w-projection').textContent = yen(agg.projection);
+  $('w-projection-sub').textContent = agg.monthsElapsed
+    ? `月${yen(agg.pace)}ペースが続いた場合` : 'ペースを出せるデータがありません';
+  $('w-received').textContent = yen(agg.receivedWage);
+  $('w-received-sub').textContent = agg.lastReceivedMonth
+    ? `${agg.lastReceivedMonth}月支払分まで振込済み` : 'まだ振込がありません';
+
+  const banners = [];
+  if (T.provisional) {
+    banners.push(`<div class="banner warn"><span class="bi">⚠️</span><div>
+      <b>${STATE.activeYear}年分の税制はまだ確定していません。</b>
+      ${T.fallback}年分の数値を暫定的に表示しています。</div></div>`);
+  }
+  if (agg.taxableCommute > 0) {
+    banners.push(`<div class="banner info"><span class="bi">🚃</span><div>
+      通勤費を「課税対象」に設定しているバイト先があるため、その分（${yen(agg.taxableCommute)}）は
+      住民税・所得税などの壁の判定にも含めています。</div></div>`);
+  }
+  $('walls-banners').innerHTML = banners.join('');
+
+  const walls = generateWalls(STATE.activeYear);
+  $('wall-meters').innerHTML = walls.length
+    ? walls.map((w) => meterHTML(w, wallStatus(w, agg))).join('')
+    : '<div class="empty">プロフィール設定により、現在該当する壁はありません</div>';
+
+  /* 超過・接近時のアクション */
+  const hot = walls.map((w) => ({ w, st: wallStatus(w, agg) }))
+    .filter((x) => x.st.pct >= 0.8 || x.st.projPct >= 1);
+  const host = $('overage-list');
+  if (!hot.length) {
+    host.innerHTML = '<div class="card"><div class="empty">残り20%を切っている壁はありません。このまま「年収の壁」タブで進み具合を見ていきましょう。</div></div>';
+    return;
+  }
+  host.innerHTML = hot.map(({ w, st }) => {
+    const act = wallActions(w.key);
+    const imp = wallImpact(w, st.excess, agg, STATE.activeYear);
+    const exceeded = st.pct >= 1;
+
+    let impHTML = '';
+    if (imp) {
+      if (exceeded) {
+        const label = imp.whole
+          ? `年 ${yen(imp.amount)} 前後（超過額ではなく収入全体にかかります）`
+          : imp.cliff
+            ? `年 ${yen(imp.amount)} 前後（1円でも超えると控除が丸ごと消えるため、超過額の大小は関係ありません）`
+            : `年 ${yen(imp.amount)} 前後`;
+        impHTML = `<div class="tile" style="grid-column:1/-1;">
+          <div class="k">${imp.who}の負担増（概算）</div>
+          <div class="v" style="font-size:14px;">${label}</div>
+          ${imp.spread ? '<div class="s">国民健康保険料は自治体・前年所得で大きく変わるため、あくまで桁感の目安です</div>' : ''}
+        </div>`;
+      } else {
+        const preview = imp.whole
+          ? `超えると ${imp.who} に年 ${yen(imp.amount)} 前後の負担が発生します`
+          : imp.cliff
+            ? `1円でも超えると ${imp.who} に年 ${yen(imp.amount)} 前後の負担増（崖）`
+            : `${man(w.amount)}から段階的に増え、最大で年 ${yen(wallImpact(w, 1e9, agg, STATE.activeYear).amount)} 前後`;
+        impHTML = `<div class="tile" style="grid-column:1/-1;">
+          <div class="k">超えた場合の負担増の目安</div>
+          <div class="v" style="font-size:14px;">${preview}</div></div>`;
+      }
+    }
+
+    const checks = act.items.map((item, i) => {
+      const on = !!(STATE.overageChecklist[w.key] || {})[i];
+      return `<label class="check ${on ? 'done' : ''}">
+        <input type="checkbox" data-chk-wall="${w.key}" data-chk-idx="${i}" ${on ? 'checked' : ''}>
+        <span>${item}</span></label>`;
+    }).join('');
+
+    return `<div class="card">
+      <div class="card-head">
+        <h2 class="s-${st.level}" style="display:flex; align-items:center; gap:6px;">
+          ${st.ico}${esc(w.name)}${exceeded ? 'を超えています' : 'が近づいています'}</h2>
+        <span class="spacer"></span>
+        <span class="chip">${man(w.amount)} / ${Math.round(st.pct * 100)}%</span>
+      </div>
+      <div class="tiles" style="margin-bottom:14px;">
+        <div class="tile">
+          <div class="k">${exceeded ? '超過額' : '残り'}</div>
+          <div class="v tnum s-${st.level}">${yen(exceeded ? st.excess : st.remaining)}</div>
+        </div>
+        ${impHTML}
+      </div>
+      <div class="note" style="font-weight:700; color:var(--ink); margin-bottom:4px;">
+        ${exceeded ? 'やることチェックリスト' : '今のうちに確認・準備しておくと安心なこと'}
+      </div>
+      ${checks}
+      ${act.deadline ? `<div class="note" style="margin-top:8px; font-weight:700;" ><span class="s-crit">期限の目安:</span> ${act.deadline}</div>` : ''}
+      <div class="note tight" style="margin-top:10px;">
+        ※ あくまで一般的な目安です。正確な手続き・金額は勤務先の担当者や自治体、国税庁・日本年金機構でご確認ください。
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderSettings() {
+  const p = STATE.settings.profile;
+  $('s-age').value = p.age ?? '';
+  $('s-student').value = selVal(p.isStudent);
+  $('s-tokurei').value = selVal(p.usesGakuseiTokurei);
+  $('s-dep-tax').value = selVal(p.dependentTax);
+  $('s-rel').value = p.dependentRelationship || 'other';
+  $('s-rate').value = String(p.supporterTaxRate ?? 0.10);
+  $('s-dep-shaho').value = selVal(p.dependentSocialInsurance);
+  $('wrap-tokurei').style.display = p.isStudent === true ? '' : 'none';
+  $('wrap-rel').style.display = p.dependentTax === true ? '' : 'none';
+  $('wrap-rate').style.display = p.dependentTax === true ? '' : 'none';
+
+  renderJobs();
+
+  const hol = Object.entries(STATE.holidays).sort();
+  $('holiday-count').textContent = hol.length + '件';
+  $('holiday-tbody').innerHTML = hol.map(([d, n]) =>
+    `<tr><td class="n">${esc(d)}</td><td>${esc(n)}</td>
+     <td class="act"><button class="x-btn" data-del-holiday="${esc(d)}" type="button"
+       aria-label="${esc(d)} を削除">×</button></td></tr>`).join('');
+}
+
+const TIME_OPTS = (() => {
+  const o = [];
+  for (let h = 0; h < 24; h++) for (let m = 0; m < 60; m += 15) o.push(pad(h) + ':' + pad(m));
+  o.push('24:00');
+  return o;
+})();
+const timeOptionsHTML = (sel) =>
+  TIME_OPTS.map((t) => `<option value="${t}" ${t === sel ? 'selected' : ''}>${t}</option>`).join('');
+const dayOptionsHTML = (sel) => {
+  let o = `<option value="0" ${sel === 0 ? 'selected' : ''}>月末</option>`;
+  for (let d = 1; d <= 31; d++) o += `<option value="${d}" ${sel === d ? 'selected' : ''}>${d}日</option>`;
+  return o;
+};
+const optHTML = (pairs, sel) =>
+  pairs.map(([v, l]) => `<option value="${v}" ${String(v) === String(sel) ? 'selected' : ''}>${l}</option>`).join('');
+
+function renderJobs() {
+  $('jobs-count').textContent = STATE.jobs.length + '件';
+  $('jobs-list').innerHTML = STATE.jobs.map((job, i) => `
+  <details class="acc" ${STATE.jobs.length === 1 || job.id === STATE.activeJobId ? 'open' : ''}>
+    <summary>${esc(job.name)} <span class="chip">${yen(job.baseWage)}/時〜</span></summary>
+    <div class="acc-body">
+
+      <div class="grid">
+        <div class="field"><label>バイト先名</label>
+          <input type="text" data-jf="name" data-ji="${i}" value="${esc(job.name)}"></div>
+        <div class="field"><label>基本時給(円)</label>
+          <input type="number" data-jf="baseWage" data-ji="${i}" value="${job.baseWage}"></div>
+        <div class="field"><label>日祝の加算額(円)</label>
+          <input type="number" data-jf="sunAdd" data-ji="${i}" value="${job.sunAdd}"></div>
+      </div>
+
+      <div class="hr"></div>
+      <div class="note" style="margin-bottom:8px;"><b>時間帯別の加算額</b>（基本時給に上乗せする額）</div>
+      ${job.wageBands.map((b, bi) => `
+        <div class="grid" style="margin-bottom:8px;">
+          <div class="field"><label>開始</label>
+            <select data-bf="start" data-ji="${i}" data-bi="${bi}">${timeOptionsHTML(b.start)}</select></div>
+          <div class="field"><label>終了</label>
+            <select data-bf="end" data-ji="${i}" data-bi="${bi}">${timeOptionsHTML(b.end)}</select></div>
+          <div class="field"><label>加算(円)</label>
+            <input type="number" data-bf="addon" data-ji="${i}" data-bi="${bi}" value="${b.addon}"></div>
+          <div class="field"><label>&nbsp;</label>
+            <button class="btn ghost" data-band-del="${i}" data-bi="${bi}" type="button">削除</button></div>
+        </div>`).join('')}
+      <button class="btn ghost sm" data-band-add="${i}" type="button">＋ 時間帯を追加</button>
+
+      <div class="hr"></div>
+      <div class="note" style="margin-bottom:8px;"><b>法定の割増（任意）</b></div>
+      <div class="grid">
+        <div class="field"><label>深夜割増を自動適用(22:00-05:00 +25%)</label>
+          <select data-jf="autoNightPremium" data-ji="${i}">${optHTML([['false','しない'],['true','する']], job.autoNightPremium)}</select></div>
+        <div class="field"><label>時間外割増を自動適用(1日8時間超 +25%)</label>
+          <select data-jf="autoOvertimePremium" data-ji="${i}">${optHTML([['false','しない'],['true','する']], job.autoOvertimePremium)}</select></div>
+      </div>
+      <div class="note tight" style="margin-top:6px;">
+        上の「時間帯別の加算額」で深夜手当を既に設定している場合、ここを「する」にすると二重に加算されます。
+        どちらか一方だけを使ってください。
+      </div>
+
+      <div class="hr"></div>
+      <div class="note" style="margin-bottom:8px;"><b>端数処理</b></div>
+      <div class="grid">
+        <div class="field"><label>円未満を丸める単位</label>
+          <select data-jf="roundingScope" data-ji="${i}">${optHTML([['daily','1日ごと'],['monthly','月合計で']], job.roundingScope)}</select></div>
+        <div class="field"><label>丸め方</label>
+          <select data-jf="roundingMode" data-ji="${i}">${optHTML([['round','四捨五入'],['floor','切り捨て'],['ceil','切り上げ']], job.roundingMode)}</select></div>
+        <div class="field"><label>実働時間の丸め</label>
+          <select data-jf="timeRoundUnit" data-ji="${i}">${optHTML([[0,'丸めない'],[5,'5分単位'],[10,'10分単位'],[15,'15分単位'],[30,'30分単位']], job.timeRoundUnit)}</select></div>
+        <div class="field"><label>時間の丸め方</label>
+          <select data-jf="timeRoundMode" data-ji="${i}">${optHTML([['floor','切り捨て'],['round','四捨五入']], job.timeRoundMode)}</select></div>
+      </div>
+      <div class="note tight" style="margin-top:6px;">
+        給与明細と数円ずれる時はここを調整してください。多くの職場は「月合計で1円未満を処理」します。
+      </div>
+
+      <div class="hr"></div>
+      <div class="note" style="margin-bottom:8px;"><b>通勤費</b></div>
+      <div class="grid">
+        <div class="field"><label>1回あたり往復運賃(円)</label>
+          <input type="number" data-jf="tripFare" data-ji="${i}" value="${job.tripFare}"></div>
+        <div class="field"><label>1ヶ月定期券代(円)</label>
+          <input type="number" data-jf="passFare" data-ji="${i}" value="${job.passFare}"></div>
+        <div class="field"><label>定期に切替える勤務日数(以上)</label>
+          <input type="number" data-jf="passThreshold" data-ji="${i}" value="${job.passThreshold}"></div>
+        <div class="field"><label>通勤費は非課税扱い</label>
+          <select data-jf="commuteTaxExempt" data-ji="${i}">${optHTML([['true','はい'],['false','いいえ']], job.commuteTaxExempt)}</select></div>
+      </div>
+      <div class="note tight" style="margin-top:6px;">
+        公共交通機関の通勤手当は月15万円まで非課税です。自転車・自動車通勤の場合は距離に応じた
+        非課税限度額があり、超えた分は課税対象になります（片道2km未満は全額課税）。
+      </div>
+
+      <div class="hr"></div>
+      <div class="note" style="margin-bottom:8px;"><b>締め日・支払日</b></div>
+      <div class="grid">
+        <div class="field"><label>締め日</label>
+          <select data-jf="cutoffDay" data-ji="${i}">${dayOptionsHTML(job.cutoffDay)}</select></div>
+        <div class="field"><label>支払いは何ヶ月後</label>
+          <select data-jf="paymentMonthsAfter" data-ji="${i}">${optHTML([[0,'当月'],[1,'翌月'],[2,'翌々月'],[3,'3ヶ月後']], job.paymentMonthsAfter)}</select></div>
+        <div class="field"><label>支払日</label>
+          <select data-jf="paymentDay" data-ji="${i}">${dayOptionsHTML(job.paymentDay)}</select></div>
+        <div class="field"><label>支払日が休日の場合</label>
+          <select data-jf="holidayAdjustment" data-ji="${i}">${optHTML([['before','前営業日'],['after','翌営業日'],['none','調整しない']], job.holidayAdjustment)}</select></div>
+      </div>
+
+      ${STATE.jobs.length > 1
+        ? `<button class="btn danger" data-job-del="${i}" type="button" style="margin-top:12px;">このバイト先を削除</button>`
+        : '<div class="note tight" style="margin-top:12px;">最後の1件は削除できません。</div>'}
+    </div>
+  </details>`).join('');
+}
+
+function renderStorage() {
+  const chip = $('storage-chip'), note = $('storage-note');
+  const bc = $('btn-connect-fs'), br = $('btn-reconnect-fs'), bd = $('btn-disconnect-fs');
+  if (window.storage) {
+    chip.textContent = 'Claudeストレージ';
+    note.textContent = 'Claudeのアーティファクトストレージ（アカウント紐付け）に保存されています。自分でファイルを指定したい場合は、このHTMLをダウンロードしてChrome/Edgeで開いてください。';
+    bc.hidden = br.hidden = bd.hidden = true;
+    return;
+  }
+  if (FS_HANDLE) {
+    chip.textContent = '指定ファイルと同期中';
+    note.textContent = `「${FS_HANDLE.name || '指定したファイル'}」に自動保存しています。そのファイルをクラウド同期フォルダに置けば、他のPCからも同じファイルにつなげられます。`;
+    bc.hidden = true; br.hidden = true; bd.hidden = false;
+  } else if (PENDING_FS_HANDLE) {
+    chip.textContent = '再接続が必要';
+    note.textContent = '前回指定したファイルへのアクセス許可が切れています。下のボタンから再接続してください。';
+    bc.hidden = true; br.hidden = false; bd.hidden = true;
+  } else {
+    chip.textContent = 'このブラウザ内';
+    note.textContent = window.showSaveFilePicker
+      ? 'このブラウザ内（localStorage）に自動保存されています。特定のファイルに保存したい場合は下のボタンからどうぞ。'
+      : 'このブラウザ内（localStorage）に自動保存されています。このブラウザはファイル指定保存に非対応（スマホ等）なので、バックアップをこまめに書き出しておくと安心です。';
+    bc.hidden = false; br.hidden = true; bd.hidden = true;
+  }
+}
+
+function renderAll() {
+  if (!STATE.jobs.length) {
+    STATE.jobs = [makeJob({ name: 'バイト先1' })];
+    STATE.activeJobId = STATE.jobs[0].id;
+    save('jobs'); save('activeJobId');
+  }
+  if (!STATE.activeJobId || !STATE.jobs.find((j) => j.id === STATE.activeJobId)) {
+    STATE.activeJobId = STATE.jobs[0].id;
+    save('activeJobId');
+  }
+  const agg = annualAggregate(STATE.activeYear);
+  renderSetup();
+  renderTabs();
+  renderChrome();
+  renderHome(agg);
+  renderEntry();
+  renderPay();
+  renderWalls(agg);
+  renderSettings();
+}
+
+/* --------------------------------------------------------------------------
+   12. イベント
+   -------------------------------------------------------------------------- */
+$('tabbar').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-tab]');
+  if (!b) return;
+  STATE.activeTab = b.dataset.tab;
+  renderTabs();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+$('goto-walls').addEventListener('click', () => {
+  STATE.activeTab = 'walls'; renderTabs(); window.scrollTo({ top: 0 });
+});
+$('year-select').addEventListener('change', (e) => {
+  STATE.activeYear = Number(e.target.value);
+  renderAll();
+});
+$('job-select').addEventListener('change', async (e) => {
+  STATE.activeJobId = e.target.value;
+  STATE.cycleKey = null;
+  await save('activeJobId');
+  renderAll();
+});
+$('toggle-chart-table').addEventListener('click', () => {
+  STATE.chartAsTable = !STATE.chartAsTable;
+  renderAll();
+});
+
+/* テーマ切替: 自動 → ライト → ダーク */
+const THEMES = ['auto', 'light', 'dark'];
+function applyTheme(t) {
+  if (t === 'auto') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', t);
+  $('theme-toggle').textContent = t === 'light' ? '☀' : t === 'dark' ? '☾' : '◐';
+  $('theme-toggle').title = t === 'light' ? 'ライト' : t === 'dark' ? 'ダーク' : '端末に合わせる';
+  try { localStorage.setItem(LS_PREFIX + 'theme', t); } catch (e) {}
+}
+$('theme-toggle').addEventListener('click', () => {
+  let cur = 'auto';
+  try { cur = localStorage.getItem(LS_PREFIX + 'theme') || 'auto'; } catch (e) {}
+  applyTheme(THEMES[(THEMES.indexOf(cur) + 1) % THEMES.length]);
+  renderAll();
+});
+
+/* --- シフト入力 --- */
+['in-date', 'in-break'].forEach((id) => $(id).addEventListener('input', renderPreview));
+['in-start-h','in-start-m','in-end-h','in-end-m','in-break-start']
+  .forEach((id) => $(id).addEventListener('change', renderPreview));
+
+$('quick-shifts').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-qs-start]');
+  if (!b) return;
+  const [sh, sm] = b.dataset.qsStart.split(':');
+  const [eh, em] = b.dataset.qsEnd.split(':');
+  $('in-start-h').value = sh; $('in-start-m').value = sm;
+  $('in-end-h').value = eh;   $('in-end-m').value = em;
+  renderPreview();
+});
+
+$('btn-add-shift').addEventListener('click', async () => {
+  const date = $('in-date').value;
+  if (!date) { alert('勤務日を入力してください'); return; }
+  if (!STATE.activeJobId) { alert('先に設定タブでバイト先を登録してください'); return; }
+  const start = $('in-start-h').value + ':' + $('in-start-m').value;
+  const end   = $('in-end-h').value + ':' + $('in-end-m').value;
+  if (start === end) { alert('開始と終了が同じ時刻です'); return; }
+  const shift = {
+    id: uid(), jobId: STATE.activeJobId, date, start, end,
+    breakMin: Number($('in-break').value) || 0
+  };
+  const bs = $('in-break-start').value;
+  if (bs) shift.breakStart = bs;
+  STATE.shifts.push(shift);
+  await save('shifts');
+  renderAll();
+});
+
+$('shift-tbody').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-del-shift]');
+  if (!b) return;
+  STATE.shifts = STATE.shifts.filter((s) => s.id !== b.dataset.delShift);
+  await save('shifts');
+  renderAll();
+});
+
+/* --- 給与サイクル --- */
+$('cycle-select').addEventListener('change', (e) => {
+  STATE.cycleKey = e.target.value;
+  renderPay();
+});
+async function saveCorrection(field, value) {
+  const key = STATE.cycleKey, jobId = STATE.activeJobId;
+  if (!key || !jobId) return;
+  STATE.cycleCorrections[jobId] = STATE.cycleCorrections[jobId] || {};
+  STATE.cycleCorrections[jobId][key] = STATE.cycleCorrections[jobId][key] || {};
+  STATE.cycleCorrections[jobId][key][field] = (value === '' ? null : Number(value));
+  const cur = STATE.cycleCorrections[jobId][key];
+  if (cur.wage == null && cur.commute == null) delete STATE.cycleCorrections[jobId][key];
+  await save('cycleCorrections');
+  renderAll();
+}
+$('cy-wage-corr').addEventListener('change', (e) => saveCorrection('wage', e.target.value));
+$('cy-commute-corr').addEventListener('change', (e) => saveCorrection('commute', e.target.value));
+
+/* --- 受取済み実績 --- */
+$('btn-add-actual').addEventListener('click', async () => {
+  const month = $('ap-month').value;
+  const taxable = Number($('ap-taxable').value) || 0;
+  const commute = Number($('ap-commute').value) || 0;
+  if (!month) { alert('支払年月を入力してください'); return; }
+  if (!taxable && !commute) { alert('金額を入力してください'); return; }
+  if (!STATE.activeJobId) { alert('先に設定タブでバイト先を登録してください'); return; }
+  STATE.actualPayments.push({
+    id: uid(), jobId: STATE.activeJobId, month, taxable, commute,
+    note: $('ap-note').value.trim()
+  });
+  await save('actualPayments');
+  $('ap-taxable').value = ''; $('ap-commute').value = ''; $('ap-note').value = '';
+  renderAll();
+});
+$('actual-tbody').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-del-actual]');
+  if (!b) return;
+  STATE.actualPayments = STATE.actualPayments.filter((p) => p.id !== b.dataset.delActual);
+  await save('actualPayments');
+  renderAll();
+});
+
+/* --- 壁のチェックリスト --- */
+$('overage-list').addEventListener('change', async (e) => {
+  const cb = e.target.closest('[data-chk-wall]');
+  if (!cb) return;
+  const k = cb.dataset.chkWall, i = Number(cb.dataset.chkIdx);
+  STATE.overageChecklist[k] = STATE.overageChecklist[k] || {};
+  STATE.overageChecklist[k][i] = cb.checked;
+  await save('overageChecklist');
+  cb.closest('.check').classList.toggle('done', cb.checked);
+});
+
+/* --- プロフィール --- */
+const PROFILE_BINDINGS = [
+  ['s-age', 'age', (v) => (v === '' ? null : Number(v))],
+  ['s-student', 'isStudent', triState],
+  ['s-tokurei', 'usesGakuseiTokurei', triState],
+  ['s-dep-tax', 'dependentTax', triState],
+  ['s-rel', 'dependentRelationship', String],
+  ['s-rate', 'supporterTaxRate', Number],
+  ['s-dep-shaho', 'dependentSocialInsurance', triState]
+];
+PROFILE_BINDINGS.forEach(([id, key, cast]) => {
+  $(id).addEventListener('change', async (e) => {
+    STATE.settings.profile[key] = cast(e.target.value);
+    await save('settings');
+    renderAll();
+  });
+});
+
+/* --- バイト先設定 --- */
+const NUMERIC_JOB_FIELDS = new Set(['baseWage','sunAdd','tripFare','passFare','passThreshold',
+                                    'cutoffDay','paymentMonthsAfter','paymentDay','timeRoundUnit']);
+const BOOL_JOB_FIELDS = new Set(['commuteTaxExempt','autoNightPremium','autoOvertimePremium']);
+
+$('jobs-list').addEventListener('change', async (e) => {
+  const el = e.target;
+  if (el.dataset.jf !== undefined) {
+    const job = STATE.jobs[Number(el.dataset.ji)];
+    if (!job) return;
+    const f = el.dataset.jf;
+    job[f] = NUMERIC_JOB_FIELDS.has(f) ? (Number(el.value) || 0)
+           : BOOL_JOB_FIELDS.has(f)    ? (el.value === 'true')
+           : el.value;
+    await save('jobs');
+    renderAll();
+  } else if (el.dataset.bf !== undefined) {
+    const job = STATE.jobs[Number(el.dataset.ji)];
+    if (!job) return;
+    const band = job.wageBands[Number(el.dataset.bi)];
+    if (!band) return;
+    band[el.dataset.bf] = el.dataset.bf === 'addon' ? (Number(el.value) || 0) : el.value;
+    await save('jobs');
+    renderAll();
+  }
+});
+$('jobs-list').addEventListener('click', async (e) => {
+  const addBand = e.target.closest('[data-band-add]');
+  if (addBand) {
+    STATE.jobs[Number(addBand.dataset.bandAdd)].wageBands.push({ start:'09:00', end:'17:00', addon:0 });
+    await save('jobs'); renderAll(); return;
+  }
+  const delBand = e.target.closest('[data-band-del]');
+  if (delBand) {
+    STATE.jobs[Number(delBand.dataset.bandDel)].wageBands.splice(Number(delBand.dataset.bi), 1);
+    await save('jobs'); renderAll(); return;
+  }
+  const delJob = e.target.closest('[data-job-del]');
+  if (delJob) {
+    if (!confirm('このバイト先を削除します。登録済みのシフトや実績は残りますが、参照できなくなります。よろしいですか？')) return;
+    const i = Number(delJob.dataset.jobDel);
+    const removed = STATE.jobs[i].id;
+    STATE.jobs.splice(i, 1);
+    if (STATE.activeJobId === removed) STATE.activeJobId = STATE.jobs[0] ? STATE.jobs[0].id : null;
+    await save('jobs'); await save('activeJobId');
+    renderAll();
+  }
+});
+$('btn-add-job').addEventListener('click', async () => {
+  const job = makeJob({ name: `バイト先${STATE.jobs.length + 1}` });
+  STATE.jobs.push(job);
+  STATE.activeJobId = job.id;
+  await save('jobs'); await save('activeJobId');
+  renderAll();
+});
+
+/* --- 祝日 --- */
+$('btn-fetch-holidays').addEventListener('click', async () => {
+  const st = $('holiday-status');
+  st.textContent = '取得中...';
+  try {
+    const res = await fetch('https://holidays-jp.github.io/api/v1/date.json');
+    if (!res.ok) throw new Error('network');
+    const data = await res.json();
+    let added = 0;
+    Object.entries(data).forEach(([d, n]) => { if (!(d in STATE.holidays)) added++; STATE.holidays[d] = n; });
+    await save('holidays');
+    renderAll();
+    st.textContent = `${Object.keys(data).length}件を反映しました（新規${added}件）。`;
+  } catch (e) {
+    st.textContent = 'オンライン取得に失敗しました。ネットワーク環境をご確認ください（手動でも追加できます）。';
+  }
+});
+$('btn-add-holiday').addEventListener('click', async () => {
+  const d = $('s-holiday-add').value;
+  if (!d) return;
+  STATE.holidays[d] = 'カスタム';
+  await save('holidays');
+  renderAll();
+});
+$('holiday-tbody').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-del-holiday]');
+  if (!b) return;
+  delete STATE.holidays[b.dataset.delHoliday];
+  await save('holidays');
+  renderAll();
+});
+
+/* --- 保存先 --- */
+$('btn-connect-fs').addEventListener('click', connectFs);
+$('btn-reconnect-fs').addEventListener('click', reconnectFs);
+$('btn-disconnect-fs').addEventListener('click', async () => {
+  if (!confirm('ファイルとの同期を解除します（ファイル自体は消えません）。よろしいですか？')) return;
+  await disconnectFs();
+});
+
+/* --- バックアップ --- */
+$('btn-export').addEventListener('click', () => {
+  const payload = { exportedAt: new Date().toISOString(), version: 2 };
+  PERSIST_KEYS.forEach((k) => { payload[k] = STATE[k]; });
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const t = new Date();
+  a.href = url;
+  a.download = `salary_backup_${t.getFullYear()}${pad(t.getMonth() + 1)}${pad(t.getDate())}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  $('backup-status').textContent = '書き出しました。ダウンロードフォルダをご確認ください。';
+});
+/* ---- バックアップの読み込み（初回セットアップ画面と設定タブで共用）----
+   旧アプリ(baito_salary_tracker_1.html)が書き出したJSONも同じキー構成なので
+   そのまま読める。不足している新しい項目は migrate() が補完する。 */
+
+/* 中身を検証する。壊れたファイルで既存データを吹き飛ばさないための門番。 */
+function parseBackup(text) {
+  let data;
+  try { data = JSON.parse(text); }
+  catch (e) { return { ok: false, error: 'ファイルを読み取れませんでした。書き出した .json ファイルか確認してください。' }; }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return { ok: false, error: 'バックアップファイルの形式ではありません。' };
+  }
+  if (!PERSIST_KEYS.some((k) => data[k] !== undefined)) {
+    return { ok: false, error: 'このアプリのバックアップファイルではないようです。書き出した .json ファイルを選んでください。' };
+  }
+  const arrays = [['shifts', 'シフト'], ['jobs', 'バイト先'], ['actualPayments', '受取実績']];
+  for (const [key, label] of arrays) {
+    if (data[key] !== undefined && !Array.isArray(data[key])) {
+      return { ok: false, error: `${label}のデータが壊れているため読み込めません。` };
+    }
+  }
+  return { ok: true, data };
+}
+
+function backupSummary(data) {
+  const n = (v) => (Array.isArray(v) ? v.length : 0);
+  const lines = [
+    `シフト ${n(data.shifts)}件`,
+    `バイト先 ${n(data.jobs)}件`,
+    `受取実績 ${n(data.actualPayments)}件`
+  ];
+  let when = '';
+  if (data.exportedAt) {
+    const d = new Date(data.exportedAt);
+    if (!isNaN(d.getTime())) when = `${fmtDate(d)} ${pad(d.getHours())}:${pad(d.getMinutes())} に書き出したファイル`;
+  }
+  return { line: lines.join(' / '), when };
+}
+
+async function applyBackup(data) {
+  STATE.shifts           = Array.isArray(data.shifts) ? data.shifts : [];
+  STATE.actualPayments   = Array.isArray(data.actualPayments) ? data.actualPayments : [];
+  STATE.cycleCorrections = (data.cycleCorrections && typeof data.cycleCorrections === 'object') ? data.cycleCorrections : {};
+  STATE.overageChecklist = (data.overageChecklist && typeof data.overageChecklist === 'object') ? data.overageChecklist : {};
+  if (Array.isArray(data.jobs) && data.jobs.length) STATE.jobs = data.jobs;
+  if (data.holidays && typeof data.holidays === 'object') STATE.holidays = data.holidays;
+  if (data.settings && typeof data.settings === 'object') {
+    STATE.settings = { ...STATE.settings, ...data.settings };
+    /* 旧バックアップは setupDone を持たない。中身から判定し直させる。 */
+    delete STATE.settings.setupDone;
+  }
+  migrate();
+  STATE.activeJobId = (data.activeJobId && STATE.jobs.find((j) => j.id === data.activeJobId))
+    ? data.activeJobId : STATE.jobs[0].id;
+  STATE.cycleKey = null;
+  for (const k of PERSIST_KEYS) await save(k);
+}
+
+let importStatusEl = null;   // 読み込みを開始した画面のメッセージ欄
+
+function startImport(statusElId) {
+  importStatusEl = statusElId ? $(statusElId) : null;
+  if (importStatusEl) importStatusEl.textContent = '';
+  $('file-import').click();
+}
+
+$('btn-import').addEventListener('click', () => startImport('backup-status'));
+$('btn-setup-import').addEventListener('click', () => startImport('setup-import-status'));
+
+$('file-import').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';                 // 同じファイルを選び直せるように
+  if (!file) return;
+  const status = importStatusEl;
+  const say = (msg) => { if (status) status.textContent = msg; else alert(msg); };
+
+  const reader = new FileReader();
+  reader.onerror = () => say('ファイルを開けませんでした。');
+  reader.onload = async (ev) => {
+    const parsed = parseBackup(ev.target.result);
+    if (!parsed.ok) { say(parsed.error); return; }
+
+    const { line, when } = backupSummary(parsed.data);
+    const hadData = hasMeaningfulData();
+    const msg = [
+      '次の内容を読み込みます。', '', line, when, '',
+      hadData ? '⚠ 今このアプリに入っているデータは上書きされます。' : ''
+    ].filter(Boolean).join('\n');
+    if (!confirm(msg)) { say('読み込みを取り消しました。'); return; }
+
+    try {
+      await applyBackup(parsed.data);
+    } catch (err) {
+      console.error(err);
+      say('読み込み中に問題が発生しました。ファイルが壊れている可能性があります。');
+      return;
+    }
+    STATE.activeTab = 'home';
+    renderAll();
+    window.scrollTo({ top: 0 });
+    toast(`復元しました（${line}）`);
+  };
+  reader.readAsText(file);
+});
+
+$('btn-reset').addEventListener('click', async () => {
+  if (!confirm('すべてのシフト・設定データを削除します。よろしいですか？')) return;
+  STATE.shifts = []; STATE.actualPayments = []; STATE.cycleCorrections = {};
+  STATE.overageChecklist = {};
+  STATE.settings = { profile: JSON.parse(JSON.stringify(DEFAULT_PROFILE)), setupDone: false };
+  STATE.holidays = Object.fromEntries(DEFAULT_HOLIDAYS);
+  STATE.jobs = [makeJob({ name: 'バイト先1' })];
+  STATE.activeJobId = STATE.jobs[0].id;
+  for (const k of PERSIST_KEYS) await save(k);
+  renderAll();
+});
+
+/* --------------------------------------------------------------------------
+   12b. 初回セットアップ
+   -------------------------------------------------------------------------- */
+const SETUP_STEPS = 4;
+let setupStep = 0;
+
+const inSetup = () => !STATE.settings.setupDone;
+
+function renderSetup() {
+  const on = inSetup();
+  document.body.classList.toggle('setup-mode', on);
+  $('page-setup').hidden = !on;
+  $('year-select').hidden = on;
+  if (!on) return;
+
+  $('setup-dots').innerHTML = Array.from({ length: SETUP_STEPS }, (_, i) =>
+    `<span class="${i <= setupStep ? 'on' : ''}"></span>`).join('');
+  document.querySelectorAll('#page-setup .setup-step').forEach((el) => {
+    el.hidden = Number(el.dataset.step) !== setupStep;
+  });
+  $('su-back').hidden = setupStep === 0;
+  $('su-next').textContent = setupStep === SETUP_STEPS - 1 ? 'はじめる' : '次へ';
+
+  /* 条件付きの項目 */
+  $('su-wrap-tokurei').hidden = $('su-student').value !== 'true';
+  $('su-wrap-rel').hidden = $('su-dep-tax').value !== 'true';
+}
+
+/* 現在のステップの入力を STATE に書き込む。戻る/進むのどちらでも呼ぶので、
+   途中で離脱しても入力が消えない。 */
+function commitSetupStep(step) {
+  const job = STATE.jobs[0];
+  if (step === 1) {
+    const name = $('su-name').value.trim();
+    if (name) job.name = name;
+    job.baseWage           = Number($('su-wage').value) || 0;
+    job.sunAdd             = Number($('su-sun').value) || 0;
+    job.cutoffDay          = Number($('su-cutoff').value) || 0;
+    job.paymentMonthsAfter = Number($('su-pay-months').value) || 0;
+    job.paymentDay         = Number($('su-pay-day').value) || 0;
+    job.holidayAdjustment  = $('su-pay-adjust').value;
+  } else if (step === 2) {
+    job.tripFare         = Number($('su-trip').value) || 0;
+    job.passFare         = Number($('su-pass').value) || 0;
+    job.passThreshold    = Number($('su-pass-th').value) || 0;
+    job.commuteTaxExempt = $('su-exempt').value === 'true';
+  } else if (step === 3) {
+    const p = STATE.settings.profile;
+    const age = $('su-age').value;
+    p.age                       = age === '' ? null : Number(age);
+    p.isStudent                 = triState($('su-student').value);
+    p.usesGakuseiTokurei        = triState($('su-tokurei').value);
+    p.dependentTax              = triState($('su-dep-tax').value);
+    p.dependentRelationship     = $('su-rel').value || 'other';
+    p.dependentSocialInsurance  = triState($('su-dep-shaho').value);
+  }
+}
+
+/* セットアップ画面に現在の値を流し込む（やり直し時に前回の入力が出るように） */
+function fillSetupForm() {
+  const job = STATE.jobs[0] || makeJob({});
+  const p = STATE.settings.profile;
+  $('su-name').value       = job.name && job.name !== 'バイト先1' ? job.name : '';
+  $('su-wage').value       = job.baseWage || '';
+  $('su-sun').value        = job.sunAdd || 0;
+  $('su-cutoff').value     = job.cutoffDay ?? 0;
+  $('su-pay-months').value = job.paymentMonthsAfter ?? 1;
+  $('su-pay-day').value    = job.paymentDay ?? 25;
+  $('su-pay-adjust').value = job.holidayAdjustment || 'before';
+  $('su-trip').value       = job.tripFare || 0;
+  $('su-pass').value       = job.passFare || 0;
+  $('su-pass-th').value    = job.passThreshold || 0;
+  $('su-exempt').value     = String(job.commuteTaxExempt !== false);
+  $('su-age').value        = p.age ?? '';
+  $('su-student').value    = selVal(p.isStudent);
+  $('su-tokurei').value    = selVal(p.usesGakuseiTokurei);
+  $('su-dep-tax').value    = selVal(p.dependentTax);
+  $('su-rel').value        = p.dependentRelationship || 'other';
+  $('su-dep-shaho').value  = selVal(p.dependentSocialInsurance);
+}
+
+async function finishSetup(skipped) {
+  if (!skipped) commitSetupStep(setupStep);
+  STATE.settings.setupDone = true;
+  STATE.activeTab = 'home';
+  await save('jobs'); await save('settings');
+  renderAll();
+  window.scrollTo({ top: 0 });
+  if (!skipped) toast('設定を保存しました。シフトを登録してみましょう。');
+}
+
+$('su-next').addEventListener('click', async () => {
+  /* 時給が無いと全部 ¥0 になって何も判断できないので、ここだけは必須にする */
+  if (setupStep === 1 && !(Number($('su-wage').value) > 0)) {
+    toast('基本時給を入力してください。分からない場合は「あとで設定する」で先に進めます。');
+    $('su-wage').focus();
+    return;
+  }
+  if (setupStep === SETUP_STEPS - 1) { await finishSetup(false); return; }
+  commitSetupStep(setupStep);
+  setupStep++;
+  renderSetup();
+  window.scrollTo({ top: 0 });
+});
+$('su-back').addEventListener('click', () => {
+  commitSetupStep(setupStep);
+  setupStep = Math.max(0, setupStep - 1);
+  renderSetup();
+  window.scrollTo({ top: 0 });
+});
+$('su-skip').addEventListener('click', () => finishSetup(true));
+$('su-student').addEventListener('change', renderSetup);
+$('su-dep-tax').addEventListener('change', renderSetup);
+
+$('btn-rerun-setup').addEventListener('click', async () => {
+  STATE.settings.setupDone = false;
+  setupStep = 0;
+  await save('settings');
+  fillSetupForm();
+  renderAll();
+  window.scrollTo({ top: 0 });
+});
+
+/* --------------------------------------------------------------------------
+   12c. トースト
+   -------------------------------------------------------------------------- */
+let toastTimer = null;
+function toast(message) {
+  let el = document.querySelector('.toast');
+  if (!el) { el = document.createElement('div'); el.className = 'toast'; document.body.appendChild(el); }
+  el.textContent = message;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.remove(), 4200);
+}
+
+/* --------------------------------------------------------------------------
+   13. 起動
+   -------------------------------------------------------------------------- */
+/* 旧バージョンのデータでも欠けているフィールドを埋める。
+   旧アプリ(baito_salary_tracker_1.html)が書き出したJSONもここを通る。
+   端数処理の既定値 roundingScope:'daily' / roundingMode:'round' は
+   旧アプリの「シフトごとに Math.round」と同じ挙動なので、読み込んでも金額は変わらない。 */
+function migrate() {
+  const s = STATE.settings = STATE.settings || {};
+  const p = s.profile = s.profile || {};
+  Object.entries(DEFAULT_PROFILE).forEach(([k, v]) => { if (p[k] === undefined) p[k] = v; });
+  if (p.dependentRelationship === 'student_child') p.dependentRelationship = 'other';
+
+  STATE.jobs.forEach((job) => {
+    Object.entries(JOB_DEFAULTS).forEach(([k, v]) => {
+      if (job[k] === undefined) job[k] = (typeof v === 'object' ? JSON.parse(JSON.stringify(v)) : v);
+    });
+    if (!Array.isArray(job.wageBands)) job.wageBands = [];
+    if (!job.id) job.id = 'job-' + uid();
+  });
+
+  /* setupDone を持たない古いデータ（旧アプリのバックアップを含む）は、
+     中身があればセットアップ済みとみなす。これが無いと、既にデータのある人が
+     初回セットアップに引き戻される。 */
+  if (s.setupDone === undefined) {
+    s.setupDone = hasMeaningfulData();
+  }
+}
+
+/* 「もう使い始めている」と言えるだけの中身があるか */
+function hasMeaningfulData() {
+  if (STATE.shifts.length || STATE.actualPayments.length) return true;
+  return STATE.jobs.some((j) => Number(j.baseWage) > 0);
+}
+
+async function hydrate() {
+  const [shifts, settings, holidays, actual, corr, checklist, jobs, activeJobId] = await Promise.all([
+    loadJSON('shifts', null), loadJSON('settings', null), loadJSON('holidays', null),
+    loadJSON('actualPayments', null), loadJSON('cycleCorrections', null),
+    loadJSON('overageChecklist', null), loadJSON('jobs', null), loadJSON('activeJobId', null)
+  ]);
+  STATE.shifts = shifts || [];
+  STATE.settings = settings || { profile: JSON.parse(JSON.stringify(DEFAULT_PROFILE)), setupDone: false };
+  STATE.holidays = holidays || Object.fromEntries(DEFAULT_HOLIDAYS);
+  STATE.actualPayments = actual || [];
+  STATE.cycleCorrections = corr || {};
+  STATE.overageChecklist = checklist || {};
+  STATE.jobs = (jobs && jobs.length) ? jobs : [makeJob({ name: 'バイト先1' })];
+  migrate();
+  STATE.activeJobId = (activeJobId && STATE.jobs.find((j) => j.id === activeJobId))
+    ? activeJobId : STATE.jobs[0].id;
+
+  if (!holidays) await save('holidays');
+  if (!settings) await save('settings');
+  if (!jobs || !jobs.length) await save('jobs');
+  if (!activeJobId) await save('activeJobId');
+}
+
+async function init() {
+  try { applyTheme(localStorage.getItem(LS_PREFIX + 'theme') || 'auto'); } catch (e) { applyTheme('auto'); }
+
+  if (window.storage) {
+    await hydrate();
+  } else {
+    await tryRestoreFs();
+    if (!FS_HANDLE) await hydrate();
+  }
+
+  /* 入力フォームの初期化 */
+  $('in-date').valueAsDate = new Date();
+  const hours = [], mins = [];
+  for (let h = 0; h <= 24; h++) hours.push(pad(h));
+  for (let m = 0; m < 60; m += 5) mins.push(pad(m));
+  $('in-start-h').innerHTML = hours.map((h) => `<option ${h === '09' ? 'selected' : ''}>${h}</option>`).join('');
+  $('in-end-h').innerHTML   = hours.map((h) => `<option ${h === '17' ? 'selected' : ''}>${h}</option>`).join('');
+  $('in-start-m').innerHTML = mins.map((m) => `<option>${m}</option>`).join('');
+  $('in-end-m').innerHTML   = mins.map((m) => `<option>${m}</option>`).join('');
+  $('in-break-start').innerHTML = '<option value="">指定しない</option>' + timeOptionsHTML('');
+
+  /* 初回セットアップのフォーム */
+  $('su-cutoff').innerHTML  = dayOptionsHTML(0);
+  $('su-pay-day').innerHTML = dayOptionsHTML(25);
+  fillSetupForm();
+
+  renderStorage();
+  renderAll();
+
+  /* チャートだけ幅の変化に追従させる。renderAll() を呼ぶと
+     フォーム入力中に再描画されて入力が飛ぶので、チャートに限定する。 */
+  const chartHost = $('monthly-chart-wrap');
+  if (chartHost && 'ResizeObserver' in window) {
+    let lastW = 0, raf = null;
+    new ResizeObserver((entries) => {
+      const w = Math.round(entries[0].contentRect.width);
+      if (!w || Math.abs(w - lastW) < 24) return;
+      lastW = w;
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => renderMonthlyChart(annualAggregate(STATE.activeYear)));
+    }).observe(chartHost);
+  }
+}
+
+init();
+</script>
+</body>
+</html>
