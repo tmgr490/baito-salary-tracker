@@ -331,6 +331,20 @@ td .wd{ color:var(--ink-3); font-weight:600; }
   text-align:center; color:var(--ink-3); font-size:12.5px;
   padding:26px 12px; border:1px dashed var(--line-2); border-radius:var(--r-md);
 }
+/* 通勤費「除く／含む」の対比表 */
+.basis-tbl tbody th{
+  text-align:left; font-weight:700; font-size:12px; color:var(--ink-2);
+  padding:9px 9px 9px 0; border-bottom:1px solid var(--line); white-space:nowrap;
+}
+.basis-tbl thead th:first-child{ width:1%; }
+.basis-tbl thead th b{ color:var(--ink); }
+.basis-tbl tbody td{ font-weight:700; font-size:13.5px; }
+.basis-tbl tbody tr:nth-child(even) td{ background:transparent; }
+/* 壁の名前は数字ではないので、右揃えにすると左端がガタついて読みにくい */
+.basis-tbl tr.basis-use th, .basis-tbl tr.basis-use td{
+  font-size:11px; font-weight:600; color:var(--ink-3); line-height:1.65;
+  border-bottom:0; vertical-align:top; text-align:left; padding-top:10px;
+}
 
 /* ---------------- form ---------------- */
 .grid{ display:grid; gap:10px; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); }
@@ -733,6 +747,7 @@ body.setup-mode .toast{ bottom:20px; }
       <span class="spacer"></span>
       <span class="chip" id="home-basis-chip">-</span>
     </div>
+    <div class="note tight" style="margin-bottom:2px;">通勤費を除いた給与収入（税金の壁はこの金額で判定）</div>
     <div class="hero">
       <span class="fig tnum" id="home-total">¥0</span>
       <span class="unit" id="home-total-sub"></span>
@@ -741,12 +756,12 @@ body.setup-mode .toast{ bottom:20px; }
     <div class="hr"></div>
     <div class="tiles">
       <div class="tile">
-        <div class="k">月平均ペース</div>
+        <div class="k">月平均ペース（通勤費を除く）</div>
         <div class="v tnum" id="home-pace">-</div>
         <div class="s" id="home-pace-sub">-</div>
       </div>
       <div class="tile">
-        <div class="k">年末着地予想</div>
+        <div class="k">年末着地予想（通勤費を除く）</div>
         <div class="v tnum" id="home-projection">-</div>
         <div class="s" id="home-projection-sub">-</div>
       </div>
@@ -756,9 +771,9 @@ body.setup-mode .toast{ bottom:20px; }
         <div class="s" id="home-nextpay-sub">-</div>
       </div>
       <div class="tile">
-        <div class="k">通勤費(非課税分)</div>
+        <div class="k">通勤費（非課税分）</div>
         <div class="v tnum" id="home-commute">-</div>
-        <div class="s">壁の判定では原則除外</div>
+        <div class="s">税金の壁では除外／社保の扶養では加算</div>
       </div>
     </div>
   </div>
@@ -935,12 +950,26 @@ body.setup-mode .toast{ bottom:20px; }
       <span class="spacer"></span>
       <span class="chip" id="walls-verified-chip">-</span>
     </div>
-    <div class="tiles" style="margin-bottom:14px;">
-      <div class="tile"><div class="k">判定に使う給与収入</div><div class="v tnum" id="w-basis">-</div><div class="s">非課税通勤費を除いた額</div></div>
-      <div class="tile"><div class="k">通勤費を含む収入</div><div class="v tnum" id="w-basis-commute">-</div><div class="s">社保の扶養だけこちらで判定</div></div>
-      <div class="tile"><div class="k">年末着地予想</div><div class="v tnum" id="w-projection">-</div><div class="s" id="w-projection-sub">-</div></div>
-      <div class="tile"><div class="k">うち受取済み</div><div class="v tnum" id="w-received">-</div><div class="s" id="w-received-sub">-</div></div>
+    <div class="tbl-scroll" style="margin-bottom:10px;">
+      <table class="basis-tbl">
+        <thead><tr>
+          <th></th>
+          <th class="n">通勤費を<b>除く</b></th>
+          <th class="n">通勤費を<b>含む</b></th>
+        </tr></thead>
+        <tbody>
+          <tr><th scope="row">いまの累計</th>
+            <td class="n" id="w-basis">-</td><td class="n" id="w-basis-commute">-</td></tr>
+          <tr><th scope="row">うち受取済み</th>
+            <td class="n" id="w-received">-</td><td class="n" id="w-received-full">-</td></tr>
+          <tr><th scope="row">年末着地予想</th>
+            <td class="n" id="w-projection">-</td><td class="n" id="w-projection-full">-</td></tr>
+          <tr class="basis-use"><th scope="row">この列で見る壁</th>
+            <td id="w-use-wage">-</td><td id="w-use-full">-</td></tr>
+        </tbody>
+      </table>
     </div>
+    <div class="note tight" id="w-basis-note" style="margin-bottom:14px;"></div>
     <div id="wall-meters"></div>
     <div class="hr"></div>
     <div class="note tight">
@@ -1747,7 +1776,8 @@ function annualAggregate(year) {
   const now = new Date();
   let scheduledWage = 0, scheduledCommute = 0;      // 年内に支払日が来る全て（未払い含む）
   let receivedWage  = 0, receivedCommute  = 0;      // すでに支払日を迎えた分だけ
-  let taxableCommute = 0;                           // 課税扱いの通勤費のみ
+  /* 課税扱いの通勤費。壁の判定では非課税分だけを除くので、予定と受取済みを別々に持つ。 */
+  let taxableCommute = 0, receivedTaxableCommute = 0;
   const perJob = [];
   const monthly = {};                               // 'M' -> { [jobName]: 額 }
   let firstPayMonth = null, lastPayMonth = null, lastReceivedMonth = null;
@@ -1763,7 +1793,7 @@ function annualAggregate(year) {
   };
 
   STATE.jobs.forEach((job) => {
-    let jw = 0, jc = 0;
+    let jw = 0, jc = 0, jcReceived = 0;
     allCycleKeys(job.id).forEach((key) => {
       const eff = cycleEffective(key, job.id);
       if (!eff.inCycle.length && !eff.wageCorrected) return;
@@ -1779,12 +1809,13 @@ function annualAggregate(year) {
 
       if (pd <= now) {
         receivedWage += eff.wage; receivedCommute += eff.commute;
+        jcReceived += eff.commute;
         if (lastReceivedMonth === null || m > lastReceivedMonth) lastReceivedMonth = m;
       } else if (!nextPay || pd < nextPay.date) {
         nextPay = { date: pd, amount: eff.wage + eff.commute, job: job.name };
       }
     });
-    if (!job.commuteTaxExempt) taxableCommute += jc;
+    if (!job.commuteTaxExempt) { taxableCommute += jc; receivedTaxableCommute += jcReceived; }
     if (jw || jc) perJob.push({ name: job.name, wage: jw, commute: jc });
   });
 
@@ -1812,6 +1843,7 @@ function annualAggregate(year) {
     : 0;
   const pace = monthsElapsed > 0 ? receivedWage / monthsElapsed : 0;
   const commutePace = monthsElapsed > 0 ? receivedCommute / monthsElapsed : 0;
+  const taxableCommutePace = monthsElapsed > 0 ? receivedTaxableCommute / monthsElapsed : 0;
 
   /* 着地予想 = 予定として判明している分 + 残り月数 × 直近ペース */
   const knownThrough = lastPayMonth || 0;
@@ -1820,18 +1852,21 @@ function annualAggregate(year) {
   const projectionCommute = scheduledCommute + commutePace * remaining;
 
   /* 壁の判定基礎
-     - 給与収入ベース: 課税対象の支給額（非課税通勤費は除く）
+     - 給与収入ベース: 課税対象の支給額（非課税の通勤手当は除く）
      - 社保の扶養ベース: 非課税の通勤手当も含めた収入 */
   const wageBasis = scheduledWage + taxableCommute;
-  const wageBasisProjection = projection + (taxableCommute > 0 ? (projectionCommute - scheduledCommute) : 0);
+  const wageBasisProjection = projection + taxableCommute + taxableCommutePace * remaining;
   const fullBasis = scheduledWage + scheduledCommute;
   const fullBasisProjection = projection + projectionCommute;
+  const receivedFull = receivedWage + receivedCommute;
+  const receivedBasis = receivedWage + receivedTaxableCommute;
 
   return {
     year, perJob, monthly, monthlyFull,
     scheduledWage, scheduledCommute, receivedWage, receivedCommute,
-    taxableCommute, exemptCommute: scheduledCommute - taxableCommute,
-    pace, monthsElapsed, projection, projectionCommute,
+    taxableCommute, receivedTaxableCommute, exemptCommute: scheduledCommute - taxableCommute,
+    pace, commutePace, monthsElapsed, projection, projectionCommute,
+    receivedFull, receivedBasis,
     wageBasis, wageBasisProjection, fullBasis, fullBasisProjection,
     firstPayMonth, lastPayMonth, lastReceivedMonth, knownThrough, nextPay,
     hasFuture: scheduledWage !== receivedWage
@@ -2410,9 +2445,9 @@ function renderHome(agg) {
   const T = taxYearData(STATE.activeYear);
   $('home-year-chip').textContent = `${STATE.activeYear}年 / ${T.era}`;
   $('home-basis-chip').textContent = agg.hasFuture ? '予定を含む' : '支払済みのみ';
-  $('home-total').textContent = yen(agg.scheduledWage);
+  $('home-total').textContent = yen(agg.wageBasis);
   $('home-total-sub').textContent = agg.scheduledCommute
-    ? `＋通勤費 ${yen(agg.scheduledCommute)}` : '';
+    ? `＋通勤費 ${yen(agg.exemptCommute)} = ${yen(agg.fullBasis)}` : '';
 
   $('home-period').textContent = agg.firstPayMonth
     ? `${agg.firstPayMonth}月〜${agg.lastPayMonth}月の支払分${agg.hasFuture ? '（まだ振り込まれていない予定額を含みます）' : ''}`
@@ -2420,10 +2455,14 @@ function renderHome(agg) {
 
   $('home-pace').textContent = agg.monthsElapsed ? yen(agg.pace) : '—';
   $('home-pace-sub').textContent = agg.monthsElapsed
-    ? `受取済み ${agg.monthsElapsed}ヶ月分から算出` : '受取済みの給与がありません';
-  $('home-projection').textContent = agg.monthsElapsed || agg.scheduledWage ? yen(agg.projection) : '—';
-  $('home-projection-sub').textContent = agg.knownThrough
-    ? `${agg.knownThrough}月分まで確定 ＋ 残り${Math.max(0, 12 - agg.knownThrough)}ヶ月を現ペースで` : '—';
+    ? `通勤費込みなら ${yen(agg.pace + agg.commutePace)}／受取済み ${agg.monthsElapsed}ヶ月分から算出`
+    : '受取済みの給与がありません';
+  const hasPace = agg.monthsElapsed > 0 || agg.scheduledWage > 0;
+  $('home-projection').textContent = hasPace ? yen(agg.wageBasisProjection) : '—';
+  $('home-projection-sub').textContent = hasPace
+    ? `通勤費込みなら ${yen(agg.fullBasisProjection)}`
+      + (agg.knownThrough ? `／${agg.knownThrough}月分まで確定＋残り${Math.max(0, 12 - agg.knownThrough)}ヶ月を現ペースで` : '')
+    : '—';
 
   if (agg.nextPay) {
     $('home-nextpay').textContent = fmtMD(agg.nextPay.date) + `(${WD[agg.nextPay.date.getDay()]})`;
@@ -2634,14 +2673,39 @@ function renderWalls(agg) {
   const T = taxYearData(STATE.activeYear);
   $('walls-year-chip').textContent = `${STATE.activeYear}年 / ${T.era}`;
   $('walls-verified-chip').textContent = `最終確認 ${TAX_VERIFIED}`;
-  $('w-basis').textContent = yen(agg.wageBasis);
-  $('w-basis-commute').textContent = yen(agg.fullBasis);
-  $('w-projection').textContent = yen(agg.projection);
-  $('w-projection-sub').textContent = agg.monthsElapsed
-    ? `月${yen(agg.pace)}ペースが続いた場合` : 'ペースを出せるデータがありません';
-  $('w-received').textContent = yen(agg.receivedWage);
-  $('w-received-sub').textContent = agg.lastReceivedMonth
-    ? `${agg.lastReceivedMonth}月支払分まで振込済み` : 'まだ振込がありません';
+  /* 通勤費を「除く／含む」の2列で並べて、どちらの金額なのかを迷わせない */
+  $('w-basis').textContent          = yen(agg.wageBasis);
+  $('w-basis-commute').textContent  = yen(agg.fullBasis);
+  $('w-received').textContent       = yen(agg.receivedBasis);
+  $('w-received-full').textContent  = yen(agg.receivedFull);
+  const hasPace = agg.monthsElapsed > 0 || agg.scheduledWage > 0;
+  $('w-projection').textContent      = hasPace ? yen(agg.wageBasisProjection) : '—';
+  $('w-projection-full').textContent = hasPace ? yen(agg.fullBasisProjection) : '—';
+
+  const wallsForBasis = generateWalls(STATE.activeYear).reduce((acc, w) => {
+    acc[w.basis === 'wagePlusCommute' ? 'full' : 'wage'].push(w.name);
+    return acc;
+  }, { wage: [], full: [] });
+  $('w-use-wage').innerHTML = wallsForBasis.wage.length
+    ? wallsForBasis.wage.map(esc).join('<br>') : '—';
+  $('w-use-full').innerHTML = wallsForBasis.full.length
+    ? wallsForBasis.full.map(esc).join('<br>') : '—';
+
+  $('w-basis-note').innerHTML =
+    `「通勤費を除く」は<b>非課税の通勤手当を差し引いた給与収入</b>で、税金の壁はこちらで判定します。`
+    + `「通勤費を含む」は通勤手当も足した金額で、<b>社会保険の扶養だけ</b>こちらで判定します。`
+    + (agg.taxableCommute > 0
+        ? `<br>通勤費を「課税対象」に設定しているバイト先があるため、その分（${yen(agg.taxableCommute)}）は`
+          + `左の列にも含めています。`
+        : '')
+    + (agg.monthsElapsed
+        ? `<br>年末着地予想は、受取済み${agg.monthsElapsed}ヶ月分から出した`
+          + `月${yen(agg.pace)}（通勤費込みなら月${yen(agg.pace + agg.commutePace)}）のペースが`
+          + `そのまま続いた場合の金額です。`
+        : `<br>受取済みの給与がまだないため、年末着地予想のペースは出せていません。`)
+    + (agg.lastReceivedMonth
+        ? `「うち受取済み」は${agg.lastReceivedMonth}月支払分までの実際に振り込まれた金額です。`
+        : '');
 
   const banners = [];
   if (T.provisional) {
