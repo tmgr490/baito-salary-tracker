@@ -1,3 +1,12 @@
 # 検索エンジンには載せない（URLを知っていれば誰でも開けます）
+#
+# 注意: プロジェクトページ(https://<user>.github.io/<repo>/)では、
+# クローラが参照する robots.txt はドメイン直下の
+# https://<user>.github.io/robots.txt だけです。
+# このファイル自体は実際には読まれません。
+# 実効性があるのは index.html の <meta name="robots" content="noindex, nofollow">
+# の方で、こちらは確実に効きます。
+# ドメイン全体で拒否したい場合は <user>.github.io という名前のリポジトリを作り、
+# そのルートに robots.txt を置いてください。
 User-agent: *
 Disallow: /
