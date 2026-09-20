@@ -446,6 +446,31 @@ details.acc > summary::after{ content:'⌄'; margin-left:auto; color:var(--ink-3
 details.acc[open] > summary::after{ content:'⌃'; }
 details.acc > .acc-body{ padding: 0 13px 13px; }
 
+/* ---------------- 判定の確からしさ ---------------- */
+.conf{
+  font-size:11px; font-weight:800; padding:2.5px 8px; border-radius:999px;
+  white-space:nowrap; flex:0 0 auto;
+  background:var(--surface-3); color:var(--ink-2);
+}
+.conf b{ font-size:12px; }
+.conf-good{    background:color-mix(in srgb, var(--st-good) 14%, transparent);    color:var(--st-good-ink); }
+.conf-warn{    background:color-mix(in srgb, var(--st-warn) 20%, transparent);    color:var(--st-warn-ink); }
+.conf-serious{ background:color-mix(in srgb, var(--st-serious) 18%, transparent); color:var(--st-serious-ink); }
+.meter-foot .conf{ margin-left:auto; }
+details.conf-acc{ margin-top:10px; background:transparent; }
+details.conf-acc > summary{ padding:9px 11px; font-size:12px; font-weight:700; }
+.conf-sum{ color:var(--ink-3); font-weight:600; font-size:11.5px; min-width:0; }
+details.conf-acc > .acc-body{ padding:0 11px 11px; }
+.conf-list{ margin:0; padding:0; list-style:none; }
+.conf-list li{
+  border-top:1px solid var(--line); padding:9px 0 0; margin-top:9px;
+}
+.conf-list li:first-child{ border-top:0; padding-top:0; margin-top:0; }
+.conf-n{ font-size:12px; font-weight:800; color:var(--ink); }
+.conf-a{ font-size:11.5px; color:var(--ink-2); line-height:1.6; margin-top:2px; }
+.conf-e{ font-size:11.5px; color:var(--ink-3); line-height:1.6; margin-top:3px; }
+.conf-e b, .conf-a b{ color:var(--ink); }
+
 /* ---------------- bottom tab bar ---------------- */
 .tabbar{
   position:fixed; left:0; right:0; bottom:0; z-index:40;
@@ -720,6 +745,7 @@ body.setup-mode .toast{ bottom:20px; }
         </select></div>
       <div class="field"><label for="su-kyuchi">お住まいの級地区分</label>
         <select id="su-kyuchi">
+          <option value="">選択してください（未選択は1級地で計算）</option>
           <option value="1">1級地（東京23区・政令指定都市など）</option>
           <option value="2">2級地（中規模の市）</option>
           <option value="3">3級地（町村部など）</option>
@@ -731,6 +757,7 @@ body.setup-mode .toast{ bottom:20px; }
         </select></div>
       <div class="field" id="su-wrap-rel" hidden><label for="su-rel">扶養している方との続柄</label>
         <select id="su-rel">
+          <option value="">選択してください</option>
           <option value="other">配偶者以外の親族(親の子・孫など)</option>
           <option value="spouse">配偶者(夫・妻)</option>
         </select></div>
@@ -990,6 +1017,7 @@ body.setup-mode .toast{ bottom:20px; }
       </table>
     </div>
     <div class="note tight" id="w-basis-note" style="margin-bottom:14px;"></div>
+    <div id="wall-confidence"></div>
     <div id="wall-meters"></div>
     <div class="hr"></div>
     <div class="note tight">
@@ -1045,6 +1073,7 @@ body.setup-mode .toast{ bottom:20px; }
       </div>
       <div class="field"><label for="s-kyuchi">お住まいの級地区分</label>
         <select id="s-kyuchi">
+          <option value="">選択してください（未選択は1級地で計算）</option>
           <option value="1">1級地（東京23区・政令指定都市など）</option>
           <option value="2">2級地（中規模の市）</option>
           <option value="3">3級地（町村部など）</option>
@@ -1055,6 +1084,7 @@ body.setup-mode .toast{ bottom:20px; }
       </div>
       <div class="field" id="wrap-rel"><label for="s-rel">扶養している方との続柄</label>
         <select id="s-rel">
+          <option value="">選択してください</option>
           <option value="other">配偶者以外の親族(親の子・孫など)</option>
           <option value="spouse">配偶者(夫・妻)</option>
         </select>
@@ -1443,7 +1473,7 @@ const JOB_DEFAULTS = {
      アプリが持つシフトの実績とは別物なので、本人に入れてもらう。 */
   contractWeeklyHours: 0,    // 契約上の週の所定労働時間。0なら未入力
   employerSize: 0,           // 勤務先の従業員数（おおよそ）。0なら不明
-  fullTimeWeeklyHours: 40    // その職場の正社員の週所定労働時間（4分の3基準の分母）
+  fullTimeWeeklyHours: 0     // その職場の正社員の週所定労働時間。0なら週40時間とみなす
 };
 
 function makeJob(over) {
@@ -1458,9 +1488,13 @@ const DEFAULT_PROFILE = {
   usesGakuseiTokurei: null,
   dependentTax: null,
   dependentSocialInsurance: null,
-  dependentRelationship: 'other',
+  /* 未選択は null / '' にしておく。既定値で埋めてしまうと、
+     本人が選んだのか初期値のままなのかが区別できず、
+     「判定の確からしさ」を正しく出せない。計算側は全て既定値に
+     フォールバックするので、未選択のままでも壊れない。 */
+  dependentRelationship: '',
   supporterTaxRate: 0.10,
-  kyuchi: 1,                 // 住民税の均等割の非課税限度額に効く生活保護の級地区分
+  kyuchi: null,              // 住民税の均等割の非課税限度額に効く生活保護の級地区分
   usesKinroGakusei: null     // 勤労学生控除を申告しているか（学生のときだけ意味がある）
 };
 
@@ -2047,7 +2081,136 @@ function siJobStatus(job, year) {
   }
 
   return { rows, done, current, streak, streakMonths, runMonths, fullTimeLine,
-           contract, size, threshold, sizeOk, isStudent, verdict, reason };
+           contract, size, threshold, sizeOk, isStudent, verdict, reason, latest };
+}
+
+/* 支払実績のある月に、シフトの記録もあるか。
+   記録漏れがあると週の労働時間が実際より少なく出るので、その目安にする。
+   支払月から勤務月はざっくり戻すだけ（締め日のずれがあるので厳密ではない）。 */
+function shiftCoverage(job, year) {
+  const shiftMonths = new Set();
+  STATE.shifts.forEach((s) => {
+    if (s.jobId !== job.id) return;
+    const d = parseYMD(s.date);
+    if (d.getFullYear() === year) shiftMonths.add(d.getMonth() + 1);
+  });
+  const workMonths = new Set();
+  STATE.actualPayments.forEach((a) => {
+    if (a.jobId !== job.id || !a.month) return;
+    const [py, pm] = a.month.split('-').map(Number);
+    let wm = pm - (Number(job.paymentMonthsAfter) || 0), wy = py;
+    if (wm < 1) { wm += 12; wy -= 1; }
+    if (wy === year) workMonths.add(wm);
+  });
+  /* 受取実績を入れていないなら、記録漏れを検知する手がかりが無い。
+     シフトがあるなら満点にはせず、確かめようが無いことを示す 0.5 にする。 */
+  if (!workMonths.size) {
+    return { score: shiftMonths.size ? 0.5 : 0,
+             why: '受取実績を入れていないので、シフトの記録に漏れがないか確かめられません' };
+  }
+  const missing = [];
+  workMonths.forEach((m) => { if (!shiftMonths.has(m)) missing.push(m); });
+  missing.sort((a, b) => a - b);
+  return {
+    score: (workMonths.size - missing.length) / workMonths.size,
+    why: missing.length
+      ? `${missing.join('・')}月は給与を受け取っているのにシフトの記録がありません`
+      : '受取実績のある月には、すべてシフトの記録があります'
+  };
+}
+
+/* 週20時間の判定が、どれだけ本人の情報に支えられているか */
+function siConfidence(job, st) {
+  const p = STATE.settings.profile;
+  const latest = st.latest;
+  /* 適用拡大（週20時間）のルートが結論を動かしうる状況か */
+  const expansion = st.verdict !== 'fulltime'
+    && (st.contract >= SI.weeklyHours || st.streak > 0
+        || (!!latest && latest.weekly >= SI.weeklyHours * 0.85));
+  /* 4分の3の線の近くにいるときだけ、正社員の所定労働時間が効く */
+  const nearFullTime = !!latest && latest.weekly >= st.fullTimeLine * 0.8;
+  const cov = shiftCoverage(job, STATE.activeYear);
+
+  return confidence([
+    { name: '契約上の週の所定労働時間', weight: 35,
+      filled: st.contract > 0,
+      assume: 'いまは実際に働いた時間だけで判定しています。',
+      effect: '法律上の判定はあくまで<b>契約上の時間</b>が基準です。契約が週20時間以上なら、'
+            + '実績が少ない月があっても加入対象になります。' },
+    { name: '勤務先の従業員数', weight: 25,
+      filled: st.size > 0, relevant: expansion,
+      assume: `いまは企業規模要件（${st.threshold}人以上）を満たす前提で、警告する側に寄せています。`,
+      effect: '従業員数が要件に届いていなければ、短時間労働者としての加入対象にはなりません。' },
+    { name: '学生かどうか', weight: 15,
+      filled: p.isStudent === true || p.isStudent === false, relevant: expansion,
+      assume: 'いまは学生ではない前提で出しています。',
+      effect: '在学中の学生は、週20時間のルート（適用拡大）の対象外です。'
+            + 'ただし4分の3基準のほうは学生でも対象になります。' },
+    { name: '正社員の週の所定労働時間', weight: 10,
+      filled: Number(job.fullTimeWeeklyHours) > 0, relevant: nearFullTime,
+      assume: 'いまは週40時間と仮定しています（4分の3の線は週30時間）。',
+      effect: '正社員の所定が短い職場では、4分の3の線もその分下がります。' },
+    { name: 'シフトの記録', weight: 15,
+      filled: cov.score,
+      assume: cov.why + '。',
+      effect: '入れ忘れた勤務があると、週の労働時間が実際より少なく出ます。'
+            + '受取実績も入れておくと、記録漏れに気づけます。' }
+  ]);
+}
+
+/* 年収の壁ぜんぶに共通する、判定の確からしさ */
+function wallConfidence(agg) {
+  const p = STATE.settings.profile;
+  const T = taxYearData(STATE.activeYear);
+  const tri = (v) => v === true || v === false;
+  const dependent = p.dependentTax === true || p.dependentSocialInsurance === true;
+
+  /* 着地予想のうち、実際に受け取った金額で確定している割合。
+     年の前半はどうしても低くなる。これは情報不足というより時期の問題なので、
+     文言でそう説明する。 */
+  const proj = agg.fullBasisProjection || 0;
+  const fixed = proj > 0 ? clamp(agg.receivedFull / proj, 0, 1) : 0;
+
+  /* 住民税の均等割の非課税ラインの近くにいるときだけ、級地区分が効く */
+  const kintoLine = ((T.juuminzeiKinto || {})[1] || T.juuminzeiHikazei) + T.kyuyoKojoMin;
+  const kyuchiMatters = Math.max(agg.wageBasis, agg.wageBasisProjection) >= kintoLine - 200000;
+
+  return confidence([
+    { name: '年齢', weight: 18, filled: Number(p.age) > 0,
+      assume: 'いまは年齢による優遇が無いものとして出しています。',
+      effect: '19〜22歳なら、扶養している方の特定親族特別控除と、社会保険の扶養150万円'
+            + '（配偶者を除く）が効きます。壁の位置そのものが変わります。' },
+    { name: '税法上の扶養に入っているか', weight: 15, filled: tri(p.dependentTax),
+      assume: 'いまは扶養に入っていない前提で、自分にかかる税金だけを出しています。',
+      effect: '扶養に入っているなら、あなたの収入が扶養している方の税額にも跳ね返ります。' },
+    { name: '社会保険の扶養に入っているか', weight: 15, filled: tri(p.dependentSocialInsurance),
+      assume: 'いまは扶養に入っていない前提なので、月額の判定を出していません。',
+      effect: '扶養に入っているなら、年収だけでなく<b>直近3ヶ月の平均月収</b>でも外れる'
+            + 'ことがあります。ここが一番見落としやすいところです。' },
+    { name: '扶養している方との続柄', weight: 12,
+      filled: p.dependentRelationship === 'spouse' || p.dependentRelationship === 'other',
+      relevant: dependent,
+      assume: 'いまは配偶者以外の親族（親の子など）として出しています。',
+      effect: '配偶者かどうかで、適用される控除も社会保険の扶養の基準額も変わります。' },
+    { name: '学生かどうか', weight: 10, filled: tri(p.isStudent),
+      assume: 'いまは学生ではない前提で出しています。',
+      effect: '学生なら勤労学生控除が使え、所得税の壁が27万円分うしろにずれます。' },
+    { name: '勤労学生控除を申告しているか', weight: 5, filled: tri(p.usesKinroGakusei),
+      relevant: p.isStudent === true,
+      assume: 'いまは申告していない前提で出しています。',
+      effect: '控除は自動では付きません。申告していれば壁の位置が変わります。' },
+    { name: 'お住まいの級地区分', weight: 5, filled: p.kyuchi != null,
+      relevant: kyuchiMatters,
+      assume: 'いまは1級地（東京23区・政令指定都市など）として出しています。',
+      effect: `住民税の均等割がかかり始める金額が、2級地なら${man(T.juuminzeiKinto[2] + T.kyuyoKojoMin)}、`
+            + `3級地なら${man(T.juuminzeiKinto[3] + T.kyuyoKojoMin)}と早くなります。` },
+    { name: '受け取った金額の記録', weight: 20, filled: fixed,
+      assume: fixed > 0
+        ? `着地予想の${Math.round(fixed * 100)}%は受取済みの実績で、残りは今のペースからの予測です。`
+        : '着地予想がすべて予測で、実際に受け取った金額の裏付けがありません。',
+      effect: '給与明細の金額を入れるほど、着地予想は予測から実績に置き換わります。'
+            + '年の前半はどうしても予測の割合が大きくなります。' }
+  ]);
 }
 
 /* 直近3ヶ月の平均月収（全バイト先合算・通勤手当込み）。
@@ -2340,6 +2503,84 @@ const STATUS_ICON = {
   crit:    SVG_OPEN + '<path d="M8.6 3h6.8L21 8.6v6.8L15.4 21H8.6L3 15.4V8.6Z"/><path d="m9.5 9.5 5 5"/><path d="m14.5 9.5-5 5"/></svg>'
 };
 const statusIcon = (level) => `<span class="status-ico">${STATUS_ICON[level] || STATUS_ICON.good}</span>`;
+
+/* --------------------------------------------------------------------------
+   判定の確からしさ
+
+   このアプリの判定は、本人が入れた情報の上にしか立っていない。
+   入っていない項目はこちらが既定の前提で埋めているので、その前提が
+   違っていれば結論も変わる。どれだけ埋まっているかを数字で出して、
+   何を入れると何が変わるのかまで見せる。
+
+   これは「この判定が当たる確率」ではない。判定に効く項目の充足度であって、
+   統計的な精度ではない。画面にもそう書く。
+
+   ポイントは relevant。いまの状況では結論を動かしようがない項目を
+   分母から外す。たとえば4分の3基準に達している人にとって企業規模要件は
+   関係がないので、それが未入力でも確からしさは下がらない。
+
+   factor: { name, weight, filled, relevant?, assume, effect? }
+     filled  … true / false / 0〜1（部分点）
+     relevant … false なら分母から外す
+     assume  … 未入力のとき何を前提にしているか
+     effect  … 入れると結論がどう変わりうるか
+   -------------------------------------------------------------------------- */
+function confidence(factors) {
+  const score = (f) => (f.filled === true ? 1 : clamp(Number(f.filled) || 0, 0, 1));
+  const use = factors.filter((f) => f.relevant !== false);
+  const total = use.reduce((a, f) => a + f.weight, 0);
+  const got = use.reduce((a, f) => a + f.weight * score(f), 0);
+  const pct = total > 0 ? Math.round((got / total) * 100) : 100;
+  return {
+    pct,
+    level: pct >= 85 ? 'good' : pct >= 60 ? 'warn' : 'serious',
+    label: pct >= 85 ? '高い' : pct >= 60 ? 'まあまあ' : '低い',
+    used: use,
+    missing: use.filter((f) => score(f) < 1).sort((a, b) => b.weight - a.weight),
+    /* 埋まっている項目を「数に入れていません」と出しても意味がないので、
+       未入力かつ結論に効かないものだけを挙げる */
+    skipped: factors.filter((f) => f.relevant === false && score(f) < 1)
+  };
+}
+
+const confidenceChip = (c) =>
+  `<span class="conf conf-${c.level}">確からしさ <b class="tnum">${c.pct}%</b></span>`;
+
+/* 確からしさの内訳。未入力の項目と、それによって何が変わりうるかを並べる。 */
+function confidenceHTML(c, opts) {
+  const o = opts || {};
+  const rows = c.missing.map((f) => {
+    const partial = (f.filled !== true && Number(f.filled) > 0)
+      ? `<span class="wd">（一部だけ）</span>` : '';
+    return `<li>
+      <div class="conf-n">${esc(f.name)}${partial}</div>
+      <div class="conf-a">${f.assume}</div>
+      ${f.effect ? `<div class="conf-e">${f.effect}</div>` : ''}
+    </li>`;
+  }).join('');
+
+  const skipped = c.skipped.length
+    ? `<div class="note tight" style="margin-top:8px;">
+         いまの状況では結論が変わらないので、${c.skipped.map((f) => esc(f.name)).join('・')}は
+         数に入れていません。</div>`
+    : '';
+
+  return `<details class="acc conf-acc">
+    <summary>${confidenceChip(c)}<span class="conf-sum">${
+      c.missing.length ? `未入力が${c.missing.length}項目あります` : 'すべて入力済みです'
+    }</span></summary>
+    <div class="acc-body">
+      <div class="note tight" style="margin-bottom:10px;">
+        ${o.intro || 'この判定に効く項目が、どれだけ埋まっているかの割合です。'}
+        <b>判定が当たる確率ではありません。</b>制度そのものの解釈や、勤務先ごとの運用の違いは
+        この数字には含まれていません。
+      </div>
+      ${rows ? `<ul class="conf-list">${rows}</ul>` : ''}
+      ${skipped}
+      ${o.where ? `<div class="note tight" style="margin-top:10px;">${o.where}</div>` : ''}
+    </div>
+  </details>`;
+}
 
 /* 壁ひとつ分の状態（進捗率・ステータス）を計算 */
 function wallStatus(wall, agg) {
@@ -2848,6 +3089,11 @@ function renderWalls(agg) {
         ? `「うち受取済み」は${agg.lastReceivedMonth}月支払分までの実際に振り込まれた金額です。`
         : '');
 
+  $('wall-confidence').innerHTML = confidenceHTML(wallConfidence(agg), {
+    intro: '下の壁の判定に効く項目が、どれだけ埋まっているかの割合です。',
+    where: '設定タブの「あなたの情報」から入力できます。'
+  });
+
   const banners = [];
   if (T.provisional) {
     banners.push(`<div class="banner warn"><span class="bi">⚠️</span><div>
@@ -3048,7 +3294,7 @@ function renderSocialInsuranceChecks(agg) {
         </div>
         <table class="si-tbl"><tbody>${monthRows}</tbody></table>
         <div class="meter-foot s-${level}" style="margin-top:8px;">
-          ${statusIcon(level)}<span>${LABEL[st.verdict]}</span>
+          ${statusIcon(level)}<span>${LABEL[st.verdict]}</span>${confidenceChip(siConfidence(job, st))}
         </div>
         ${st.reason ? `<div class="meter-note">${st.reason}</div>` : ''}
         <div class="meter-note" style="color:var(--ink-3);">
@@ -3061,6 +3307,10 @@ function renderSocialInsuranceChecks(agg) {
             : st.sizeOk === true
               ? `<br>企業規模要件（${st.threshold}人以上）を満たしています。` : ''}
         </div>
+        ${confidenceHTML(siConfidence(job, st), {
+          intro: 'この勤務先の加入判定に効く項目が、どれだけ埋まっているかの割合です。',
+          where: '設定タブ →「' + esc(job.name) + '」を開くと入力できます。'
+        })}
       </div>`;
     }).join('')}
 
@@ -3141,11 +3391,11 @@ function renderSettings() {
   $('s-student').value = selVal(p.isStudent);
   $('s-tokurei').value = selVal(p.usesGakuseiTokurei);
   $('s-dep-tax').value = selVal(p.dependentTax);
-  $('s-rel').value = p.dependentRelationship || 'other';
+  $('s-rel').value = p.dependentRelationship || '';
   $('s-rate').value = String(p.supporterTaxRate ?? 0.10);
   $('s-dep-shaho').value = selVal(p.dependentSocialInsurance);
   $('s-kinro').value = selVal(p.usesKinroGakusei);
-  $('s-kyuchi').value = String(p.kyuchi || 1);
+  $('s-kyuchi').value = p.kyuchi == null ? '' : String(p.kyuchi);
   $('wrap-kinro').style.display = p.isStudent === true ? '' : 'none';
   $('wrap-tokurei').style.display = p.isStudent === true ? '' : 'none';
   $('wrap-rel').style.display = p.dependentTax === true ? '' : 'none';
@@ -3277,7 +3527,7 @@ function renderJobs() {
           <select data-jf="employerSize" data-ji="${i}">${optHTML(EMPLOYER_SIZE_OPTS, job.employerSize || 0)}</select></div>
         <div class="field"><label>正社員の週の所定労働時間</label>
           <input type="number" step="0.5" min="1" data-jf="fullTimeWeeklyHours" data-ji="${i}"
-                 value="${job.fullTimeWeeklyHours || 40}"></div>
+                 value="${job.fullTimeWeeklyHours || ''}" placeholder="未入力なら40で計算"></div>
       </div>
       <div class="note tight" style="margin-top:6px;">
         「壁」タブの週20時間の判定に使います。契約上の所定労働時間は雇用契約書か労働条件通知書に
@@ -3651,7 +3901,7 @@ const PROFILE_BINDINGS = [
   ['s-rate', 'supporterTaxRate', Number],
   ['s-dep-shaho', 'dependentSocialInsurance', triState],
   ['s-kinro', 'usesKinroGakusei', triState],
-  ['s-kyuchi', 'kyuchi', Number]
+  ['s-kyuchi', 'kyuchi', (v) => (v === '' ? null : Number(v))]
 ];
 PROFILE_BINDINGS.forEach(([id, key, cast]) => {
   $(id).addEventListener('change', async (e) => {
@@ -4300,10 +4550,10 @@ function commitSetupStep(step) {
     p.isStudent                 = triState($('su-student').value);
     p.usesGakuseiTokurei        = triState($('su-tokurei').value);
     p.dependentTax              = triState($('su-dep-tax').value);
-    p.dependentRelationship     = $('su-rel').value || 'other';
+    p.dependentRelationship     = $('su-rel').value;
     p.dependentSocialInsurance  = triState($('su-dep-shaho').value);
     p.usesKinroGakusei          = triState($('su-kinro').value);
-    p.kyuchi                    = Number($('su-kyuchi').value) || 1;
+    p.kyuchi                    = $('su-kyuchi').value === '' ? null : Number($('su-kyuchi').value);
   }
 }
 
@@ -4326,10 +4576,10 @@ function fillSetupForm() {
   $('su-student').value    = selVal(p.isStudent);
   $('su-tokurei').value    = selVal(p.usesGakuseiTokurei);
   $('su-dep-tax').value    = selVal(p.dependentTax);
-  $('su-rel').value        = p.dependentRelationship || 'other';
+  $('su-rel').value        = p.dependentRelationship || '';
   $('su-dep-shaho').value  = selVal(p.dependentSocialInsurance);
   $('su-kinro').value      = selVal(p.usesKinroGakusei);
-  $('su-kyuchi').value     = String(p.kyuchi || 1);
+  $('su-kyuchi').value     = p.kyuchi == null ? '' : String(p.kyuchi);
 }
 
 async function finishSetup(skipped) {
