@@ -56,6 +56,9 @@
   --st-serious-ink: #A44A22;
   --st-crit-ink:    #B32626;
 
+  /* カレンダーの土曜。日曜・祝日は --st-crit-ink を使う */
+  --cal-sat:        #2159C7;
+
   --grid:        #E8EAEE;
   --axis:        #CFD2D8;
 
@@ -97,6 +100,7 @@
     --st-warn-ink:    #fab219;
     --st-serious-ink: #ec835a;
     --st-crit-ink:    #e0605f;
+    --cal-sat:        #7FA9FF;
 
     --grid:      #24262C;
     --axis:      #3A3D45;
@@ -126,6 +130,7 @@
   --st-warn-ink:    #fab219;
   --st-serious-ink: #ec835a;
   --st-crit-ink:    #e0605f;
+  --cal-sat:        #7FA9FF;
   --grid:      #24262C;
   --axis:      #3A3D45;
   --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 22px -14px rgba(0,0,0,.7);
@@ -470,6 +475,72 @@ details.conf-acc > .acc-body{ padding:0 11px 11px; }
 .conf-a{ font-size:11.5px; color:var(--ink-2); line-height:1.6; margin-top:2px; }
 .conf-e{ font-size:11.5px; color:var(--ink-3); line-height:1.6; margin-top:3px; }
 .conf-e b, .conf-a b{ color:var(--ink); }
+
+/* ---------------- シフトのカレンダー ---------------- */
+.cal-head{ display:flex; align-items:center; gap:6px; margin-bottom:10px; }
+.cal-title{ flex:1 1 auto; text-align:center; font-size:14px; font-weight:800; min-width:0; }
+.btn.cal-nav{ width:38px; padding:0; font-size:17px; line-height:1; }
+.cal-grid{ display:grid; grid-template-columns:repeat(7, minmax(0, 1fr)); gap:3px; }
+.cal-wd{
+  text-align:center; font-size:10.5px; font-weight:800;
+  color:var(--ink-3); padding:0 0 4px;
+}
+.cal-wd.sat{ color:var(--cal-sat); }
+.cal-wd.sun{ color:var(--st-crit-ink); }
+.cal-cell{
+  appearance:none; font:inherit; color:inherit; text-align:left;
+  min-height:60px; padding:3px 3px 4px;
+  border:1px solid var(--line); border-radius:8px; background:var(--surface);
+  display:flex; flex-direction:column; gap:2px; cursor:pointer;
+  transition: border-color .15s var(--ease), background .15s var(--ease);
+}
+.cal-cell.out{ background:transparent; border-color:transparent; cursor:default; }
+.cal-cell.has{ background:var(--surface-2); }
+.cal-cell.today{ border-color:var(--brand); }
+.cal-cell.sel{ border-color:var(--brand); box-shadow:0 0 0 2px var(--brand-soft) inset; }
+.cal-d{ font-size:10.5px; font-weight:800; color:var(--ink-2); line-height:1.4; padding-left:2px; }
+.cal-cell.sat .cal-d{ color:var(--cal-sat); }
+.cal-cell.hol .cal-d{ color:var(--st-crit-ink); }
+.cal-cell.out .cal-d{ color:var(--ink-3); opacity:.45; }
+/* セル幅は画面幅の1/7しかない。9:30-14 の7文字が入るところまで詰める */
+.cal-chip{
+  font-size:9px; font-weight:800; line-height:1.6; border-radius:4px;
+  letter-spacing:-.02em; font-variant-numeric:tabular-nums;
+  background:var(--brand-soft); color:var(--brand);
+  padding:1px 1px; text-align:center;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.cal-chip.ovn{ background:color-mix(in srgb, var(--st-warn) 22%, transparent); color:var(--st-warn-ink); }
+.cal-more{ font-size:9px; font-weight:700; color:var(--ink-3); text-align:center; }
+.cal-sum{
+  margin-top:10px; padding:9px 11px; border-radius:var(--r-sm);
+  background:var(--surface-2); font-size:11.5px; color:var(--ink-2); font-weight:600;
+  display:flex; flex-wrap:wrap; gap:4px 14px;
+}
+.cal-sum b{ color:var(--ink); font-variant-numeric:tabular-nums; }
+/* 選択した日の明細 */
+.cal-day{ margin-top:10px; border:1px solid var(--line); border-radius:var(--r-md); overflow:hidden; }
+.cal-day-h{
+  display:flex; align-items:center; gap:8px; padding:9px 11px;
+  background:var(--surface-2); font-size:12.5px; font-weight:800;
+}
+.cal-day-h .wd{ color:var(--ink-3); font-weight:700; }
+.cal-row{
+  display:flex; align-items:center; gap:10px; padding:9px 5px 9px 11px;
+  border-top:1px solid var(--line);
+}
+.cal-row .t{ font-size:13px; font-weight:800; font-variant-numeric:tabular-nums; }
+.cal-row .m{ font-size:11px; color:var(--ink-3); margin-top:2px; }
+.cal-row .p{ margin-left:auto; font-size:13px; font-weight:800; font-variant-numeric:tabular-nums; }
+.cal-row .badges{ margin-top:3px; }
+.cal-empty{ padding:11px; font-size:11.5px; color:var(--ink-3); display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+
+@media (min-width: 720px){
+  .cal-cell{ min-height:78px; padding:5px; gap:3px; }
+  .cal-d{ font-size:11.5px; }
+  .cal-chip{ font-size:10.5px; padding:1px 5px; }
+  .cal-wd{ font-size:11.5px; }
+}
 
 /* ---------------- bottom tab bar ---------------- */
 .tabbar{
@@ -889,14 +960,31 @@ body.setup-mode .toast{ bottom:20px; }
     <div class="card-head">
       <h2>登録済みシフト</h2>
       <span class="chip" id="shift-count">0件</span>
+      <span class="spacer"></span>
+      <button class="btn quiet" id="toggle-shift-view" type="button">表で見る</button>
     </div>
-    <div class="tbl-scroll" style="max-height:420px;">
-      <table>
-        <thead><tr>
-          <th class="n">日付</th><th class="n">時間</th><th class="n">実働</th><th class="n">日給</th><th></th>
-        </tr></thead>
-        <tbody id="shift-tbody"></tbody>
-      </table>
+
+    <div id="shift-cal">
+      <div class="cal-head">
+        <button class="btn quiet cal-nav" id="cal-prev" type="button" aria-label="前の月">‹</button>
+        <div class="cal-title" id="cal-title" aria-live="polite">-</div>
+        <button class="btn quiet cal-nav" id="cal-next" type="button" aria-label="次の月">›</button>
+        <button class="btn quiet" id="cal-today" type="button">今月</button>
+      </div>
+      <div class="cal-grid" id="cal-grid"></div>
+      <div class="cal-sum" id="cal-sum"></div>
+      <div id="cal-day"></div>
+    </div>
+
+    <div id="shift-table" hidden>
+      <div class="tbl-scroll" style="max-height:420px;">
+        <table>
+          <thead><tr>
+            <th class="n">日付</th><th class="n">時間</th><th class="n">実働</th><th class="n">日給</th><th></th>
+          </tr></thead>
+          <tbody id="shift-tbody"></tbody>
+        </table>
+      </div>
     </div>
     <div class="empty" id="shift-empty" hidden>まだシフトが登録されていません</div>
   </div>
@@ -1511,7 +1599,9 @@ let STATE = {
   activeTab: 'home',
   activeYear: new Date().getFullYear(),
   cycleKey: null,
-  chartAsTable: false
+  chartAsTable: false,
+  calMonth: null,        // 'YYYY-MM' カレンダーで表示中の月
+  calDay: null           // 'YYYY-MM-DD' 選択中の日
 };
 
 /* --------------------------------------------------------------------------
@@ -2927,22 +3017,61 @@ function renderEntry() {
 
   renderPreview();
 
-  /* 一覧 */
+  renderShiftList();
+}
+
+/* --------------------------------------------------------------------------
+   登録済みシフト（カレンダー／表）
+
+   週の始まりは土曜。土日が左端にまとまるので、休みの日に入っている勤務を
+   見つけやすい。セルは狭いので時刻は削れるところまで削り、詳しい内容と
+   削除ボタンは選んだ日の明細に出す。
+   -------------------------------------------------------------------------- */
+const CAL_WEEK_START = 6;                                    // 0=日 … 6=土
+const CAL_ORDER = [0, 1, 2, 3, 4, 5, 6].map((i) => (CAL_WEEK_START + i) % 7);
+
+/* 10:00 → 10 ／ 09:30 → 9:30。狭いセルに入れるため削れるものは削る */
+const compactTime = (t) => {
+  const [h, m] = t.split(':');
+  return m === '00' ? String(Number(h)) : Number(h) + ':' + m;
+};
+
+/* 表とカレンダーで同じ区分バッジを使う */
+function shiftMarks(s, r) {
+  const marks = [];
+  if (r.type === 'holiday') marks.push('<span class="badge hol">日祝</span>');
+  if (timeToHours(s.end) <= timeToHours(s.start)) marks.push('<span class="badge ovn">日跨ぎ</span>');
+  if (r.nightHours > 0) marks.push('<span class="badge">深夜</span>');
+  if (r.otHours > 0)    marks.push('<span class="badge">残業</span>');
+  if (s.breakMin)       marks.push(`<span class="badge">休${s.breakMin}分</span>`);
+  return marks;
+}
+
+function renderShiftList() {
   const list = STATE.shifts.filter((s) => s.jobId === STATE.activeJobId)
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
   $('shift-count').textContent = list.length + '件';
-  const tbody = $('shift-tbody');
   $('shift-empty').hidden = list.length > 0;
-  tbody.innerHTML = list.map((s) => {
+
+  const asTable = STATE.settings.shiftView === 'table';
+  $('toggle-shift-view').textContent = asTable ? 'カレンダーで見る' : '表で見る';
+  $('shift-cal').hidden = asTable;
+  $('shift-table').hidden = !asTable;
+
+  /* 日付ごとにまとめる。1日に2本入ることもあるので配列で持つ */
+  const byDate = {};
+  list.forEach((s) => { (byDate[s.date] = byDate[s.date] || []).push(s); });
+  Object.values(byDate).forEach((a) => a.sort((x, y) => (x.start < y.start ? -1 : 1)));
+
+  if (asTable) renderShiftTable(list);
+  else { renderCalendar(byDate); renderCalDay(byDate); }
+}
+
+function renderShiftTable(list) {
+  $('shift-tbody').innerHTML = list.map((s) => {
     const r = calcShift(s);
     const d = parseYMD(s.date);
-    const over = timeToHours(s.end) <= timeToHours(s.start);
-    const marks = [];
-    if (r.type === 'holiday')  marks.push('<span class="badge hol">日祝</span>');
-    if (over)                  marks.push('<span class="badge ovn">日跨ぎ</span>');
-    if (r.nightHours > 0)      marks.push('<span class="badge">深夜</span>');
-    if (r.otHours > 0)         marks.push('<span class="badge">残業</span>');
-    if (s.breakMin)            marks.push(`<span class="badge">休${s.breakMin}分</span>`);
+    const marks = shiftMarks(s, r);
     return `<tr>
       <td class="n">${s.date.slice(5)}<span class="wd">(${WD[d.getDay()]})</span></td>
       <td class="n">${s.start}-${s.end}
@@ -2953,6 +3082,110 @@ function renderEntry() {
         aria-label="${esc(s.date)} のシフトを削除">×</button></td>
     </tr>`;
   }).join('');
+}
+
+function renderCalendar(byDate) {
+  if (!STATE.calMonth) STATE.calMonth = toKey(new Date()).slice(0, 7);
+  const [y, m] = STATE.calMonth.split('-').map(Number);
+  $('cal-title').textContent = `${y}年${m}月`;
+
+  const first = new Date(y, m - 1, 1);
+  const lead = (first.getDay() - CAL_WEEK_START + 7) % 7;   // 月初の前に何マス要るか
+  const days = new Date(y, m, 0).getDate();
+  const rows = Math.ceil((lead + days) / 7);
+  const todayKey = toKey(new Date());
+
+  let html = CAL_ORDER.map((wd) =>
+    `<div class="cal-wd${wd === 6 ? ' sat' : wd === 0 ? ' sun' : ''}">${WD[wd]}</div>`).join('');
+
+  const sum = { days: 0, hours: 0, pay: 0 };
+  for (let i = 0; i < rows * 7; i++) {
+    const d = new Date(y, m - 1, 1 - lead + i);
+    const key = toKey(d);
+    const wd = d.getDay();
+    const inMonth = d.getMonth() === m - 1 && d.getFullYear() === y;
+    const shifts = inMonth ? (byDate[key] || []) : [];
+
+    if (shifts.length) {
+      sum.days++;
+      shifts.forEach((s) => { sum.hours += calcShift(s).hours; sum.pay += shiftPay(s); });
+    }
+
+    const cls = ['cal-cell'];
+    if (!inMonth) cls.push('out');
+    if (shifts.length) cls.push('has');
+    if (key === todayKey) cls.push('today');
+    if (key === STATE.calDay && inMonth) cls.push('sel');
+    if (wd === 0 || isHoliday(key)) cls.push('hol');
+    else if (wd === 6) cls.push('sat');
+
+    /* 3本以上はセルからあふれるので、2本＋「他N件」にする */
+    const chips = shifts.slice(0, 2).map((s) => {
+      const over = timeToHours(s.end) <= timeToHours(s.start);
+      return `<div class="cal-chip${over ? ' ovn' : ''}">${
+        compactTime(s.start)}-${compactTime(s.end)}</div>`;
+    }).join('');
+    const more = shifts.length > 2 ? `<div class="cal-more">他${shifts.length - 2}件</div>` : '';
+
+    html += inMonth
+      ? `<button type="button" class="${cls.join(' ')}" data-cal-d="${key}"
+           aria-label="${m}月${d.getDate()}日${shifts.length ? ` シフト${shifts.length}件` : ''}"
+           ${key === STATE.calDay ? 'aria-pressed="true"' : ''}>
+           <div class="cal-d">${d.getDate()}</div>${chips}${more}
+         </button>`
+      : `<div class="${cls.join(' ')}"><div class="cal-d">${d.getDate()}</div></div>`;
+  }
+  $('cal-grid').innerHTML = html;
+
+  const job = getJob(STATE.activeJobId);
+  $('cal-sum').innerHTML = sum.days
+    ? `<span><b>${sum.days}</b>日勤務</span>
+       <span>実働 <b>${sum.hours.toFixed(1)}</b>h</span>
+       <span>日給の合計 <b>${yen(Math.round(sum.pay))}</b></span>
+       ${job && job.cutoffDay !== 0
+         ? `<span style="color:var(--ink-3); font-weight:600;">
+              ※ 暦月の合計です。締め日が${job.cutoffDay}日なので給与明細の期間とは一致しません</span>`
+         : ''}`
+    : '<span>この月のシフトはまだありません</span>';
+}
+
+/* 選んだ日の明細。削除はここから */
+function renderCalDay(byDate) {
+  const host = $('cal-day');
+  const key = STATE.calDay;
+  if (!key) {
+    host.innerHTML = '<div class="note tight" style="margin-top:10px;">'
+      + '日付をタップすると、その日のシフトの詳細と削除ボタンが出ます。</div>';
+    return;
+  }
+  const d = parseYMD(key);
+  const shifts = byDate[key] || [];
+  const hol = STATE.holidays[key];
+  host.innerHTML = `<div class="cal-day">
+    <div class="cal-day-h">
+      <span>${d.getMonth() + 1}月${d.getDate()}日<span class="wd">(${WD[d.getDay()]})</span></span>
+      ${hol ? `<span class="badge hol">${esc(hol)}</span>` : ''}
+      <span style="margin-left:auto;" class="wd">${shifts.length ? shifts.length + '件' : ''}</span>
+    </div>
+    ${shifts.length
+      ? shifts.map((s) => {
+          const r = calcShift(s);
+          const marks = shiftMarks(s, r);
+          return `<div class="cal-row">
+            <div style="min-width:0;">
+              <div class="t">${s.start}–${s.end}</div>
+              <div class="m">実働 ${r.hours.toFixed(2)}h</div>
+              ${marks.length ? `<div class="badges">${marks.join('')}</div>` : ''}
+            </div>
+            <div class="p">${yen(shiftPay(s))}</div>
+            <button class="x-btn" data-del-shift="${esc(s.id)}" type="button"
+              aria-label="${esc(s.date)} ${s.start}からのシフトを削除">×</button>
+          </div>`;
+        }).join('')
+      : `<div class="cal-empty"><span>この日のシフトはまだありません</span>
+           <button class="btn quiet" data-cal-add="${key}" type="button"
+             style="margin-left:auto;">この日で入力する</button></div>`}
+  </div>`;
 }
 
 function renderPreview() {
@@ -3825,16 +4058,60 @@ $('btn-add-shift').addEventListener('click', async () => {
   const bs = $('in-break-start').value;
   if (bs) shift.breakStart = bs;
   STATE.shifts.push(shift);
+  /* 追加した日がカレンダーに見えるようにしておく */
+  STATE.calMonth = shift.date.slice(0, 7);
+  STATE.calDay = shift.date;
   await save('shifts');
   renderAll();
 });
 
-$('shift-tbody').addEventListener('click', async (e) => {
-  const b = e.target.closest('[data-del-shift]');
-  if (!b) return;
-  STATE.shifts = STATE.shifts.filter((s) => s.id !== b.dataset.delShift);
+async function deleteShift(id) {
+  STATE.shifts = STATE.shifts.filter((s) => s.id !== id);
   await save('shifts');
   renderAll();
+}
+$('shift-tbody').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-del-shift]');
+  if (b) deleteShift(b.dataset.delShift);
+});
+
+/* --- シフトのカレンダー --- */
+$('toggle-shift-view').addEventListener('click', async () => {
+  STATE.settings.shiftView = STATE.settings.shiftView === 'table' ? 'calendar' : 'table';
+  await save('settings');
+  renderEntry();
+});
+function shiftCalMonth(delta) {
+  const [y, m] = (STATE.calMonth || toKey(new Date()).slice(0, 7)).split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  STATE.calMonth = toKey(d).slice(0, 7);
+  /* 表示している月の外の日を選んだままにしない */
+  if (STATE.calDay && STATE.calDay.slice(0, 7) !== STATE.calMonth) STATE.calDay = null;
+  renderEntry();
+}
+$('cal-prev').addEventListener('click', () => shiftCalMonth(-1));
+$('cal-next').addEventListener('click', () => shiftCalMonth(1));
+$('cal-today').addEventListener('click', () => {
+  STATE.calMonth = toKey(new Date()).slice(0, 7);
+  STATE.calDay = null;
+  renderEntry();
+});
+$('cal-grid').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-cal-d]');
+  if (!b) return;
+  /* 同じ日をもう一度押したら閉じる */
+  STATE.calDay = STATE.calDay === b.dataset.calD ? null : b.dataset.calD;
+  renderEntry();
+});
+$('cal-day').addEventListener('click', (e) => {
+  const del = e.target.closest('[data-del-shift]');
+  if (del) { deleteShift(del.dataset.delShift); return; }
+  const add = e.target.closest('[data-cal-add]');
+  if (add) {
+    $('in-date').value = add.dataset.calAdd;
+    renderPreview();
+    $('in-date').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
 });
 
 /* --- 給与サイクル --- */
