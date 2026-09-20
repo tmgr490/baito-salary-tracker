@@ -281,6 +281,26 @@ body{
 .meter-note{ font-size:11.5px; color:var(--ink-2); margin-top:6px; line-height:1.6; }
 .meter-src{ font-size:11px; color:var(--ink-3); margin-top:5px; }
 
+/* --- 週20時間の判定（勤務先ごと・月ごと） --- */
+.si-job{
+  border:1px solid var(--line); border-radius:var(--r-sm);
+  padding:12px; margin-bottom:10px; background:var(--surface-2);
+}
+.si-job:last-of-type{ margin-bottom:0; }
+/* 「2ヶ月連続」を目で追う表なので、縞模様は付けない（.si-run と喧嘩する） */
+.si-tbl{ font-size:12px; }
+.si-tbl tbody td{ padding:5px 6px; border-bottom:0; background:transparent; }
+.si-tbl tbody tr:nth-child(even) td{ background:transparent; }
+.si-tbl tbody td:first-child{ padding-left:8px; }
+.si-tbl tbody td:last-child{ padding-right:8px; }
+.si-tbl .track{ margin:0; }
+/* 連続して週20時間を超えた月。ここが2つ続くと3ヶ月目から加入になる */
+.si-run td{
+  background:color-mix(in srgb, var(--st-crit) 10%, transparent) !important;
+}
+.si-run td:first-child{ border-radius:6px 0 0 6px; font-weight:800; }
+.si-run td:last-child{ border-radius:0 6px 6px 0; }
+
 /* ---------------- chart ---------------- */
 .chart-wrap{ position:relative; }
 .chart-wrap svg{ display:block; width:100%; height:auto; overflow:visible; }
@@ -1315,8 +1335,51 @@ const SI = {
   /* 社会保険料の本人負担のざっくり率（健保+厚年、報酬の約15%） */
   premiumRate: 0.15,
   /* 国民健康保険料のざっくり率（自治体差が大きいので目安） */
-  kokuhoRate: 0.10
+  kokuhoRate: 0.10,
+
+  /* 短時間労働者の加入判定の中心になる週の所定労働時間 */
+  weeklyHours: 20,
+  /* 所定が20時間未満でも、実労働時間が2ヶ月連続で週20時間以上となり
+     その後も続く見込みなら、3ヶ月目の初日から被保険者になる。
+     この2ヶ月は実績で判定されるので、シフトの記録から追える。 */
+  consecutiveMonths: 2,
+  /* 4分の3基準。通常の労働者の所定労働時間の3/4以上だとフルタイム扱いで加入する。
+     学生除外はこちらには適用されないので、学生でも対象になる。 */
+  fullTimeRatio: 0.75,
+  /* 企業規模要件（厚生年金の被保険者数）。2025年6月成立の年金制度改正法で
+     2035年10月に撤廃されるまで段階的に引き下げられる。 */
+  sizeSchedule: [
+    { from: '2027-10-01', min: 36 },
+    { from: '2029-10-01', min: 21 },
+    { from: '2032-10-01', min: 11 },
+    { from: '2035-10-01', min: 1 }
+  ],
+  sizeCurrent: 51
 };
+
+/* その日時点で企業規模要件が何人以上か */
+function employerSizeThreshold(date) {
+  const d = date || new Date();
+  let min = SI.sizeCurrent;
+  SI.sizeSchedule.forEach((row) => { if (d >= parseYMD(row.from)) min = row.min; });
+  return min;
+}
+
+/* 正確な人数は本人には分からないことが多いので区分で持つ。
+   値は区分の下限にしてあり、そのまま「○人以上か」の比較に使える
+   （区分の境目を企業規模要件の引き下げ日程に合わせてある）。 */
+const EMPLOYER_SIZE_OPTS = [
+  [0,  'わからない'],
+  [10, '10人以下'],
+  [11, '11〜20人'],
+  [21, '21〜35人'],
+  [36, '36〜50人'],
+  [51, '51人以上']
+];
+function employerSizeLabel(n) {
+  const row = EMPLOYER_SIZE_OPTS.find((o) => o[0] === Number(n));
+  return row ? row[1] : '未入力';
+}
 
 /* 勤労学生控除の控除額（所得税・住民税とも据置き） */
 const KINRO_GAKUSEI_KOJO = { shotokuzei: 270000, juuminzei: 260000 };
@@ -1375,7 +1438,12 @@ const JOB_DEFAULTS = {
   roundingScope: 'daily',    // 'daily' | 'monthly' — 円未満をどの単位で丸めるか
   roundingMode: 'round',     // 'round' | 'floor' | 'ceil'
   timeRoundUnit: 0,          // 実働時間の丸め(分)。0なら丸めない
-  timeRoundMode: 'floor'     // 'floor' | 'round'
+  timeRoundMode: 'floor',    // 'floor' | 'round'
+  /* 社会保険の加入判定用。正式な判定は「契約上の所定労働時間」で行われ、
+     アプリが持つシフトの実績とは別物なので、本人に入れてもらう。 */
+  contractWeeklyHours: 0,    // 契約上の週の所定労働時間。0なら未入力
+  employerSize: 0,           // 勤務先の従業員数（おおよそ）。0なら不明
+  fullTimeWeeklyHours: 40    // その職場の正社員の週所定労働時間（4分の3基準の分母）
 };
 
 function makeJob(over) {
@@ -1893,20 +1961,93 @@ function siWageRequirementActive(year) {
    どちらも年間合計を見ているだけでは分からないので、別途計算して出す。
    -------------------------------------------------------------------------- */
 
-/* バイト先ごとの週平均労働時間（直近 weeks 週の実績から） */
-function weeklyHoursByJob(weeks) {
-  const w = weeks || 8;
+/* バイト先ごと・月ごとの「週あたり実労働時間」。
+   2ヶ月連続ルールは月単位で判定されるので、月で区切って並べる。
+   進行中の月は経過日数で割る（満了扱いにすると必ず低く出てしまう）。 */
+function monthlyWeeklyHours(jobId, year) {
   const now = new Date();
-  const from = new Date(now.getFullYear(), now.getMonth(), now.getDate() - w * 7);
-  return STATE.jobs.map((job) => {
+  const rows = [];
+  for (let m = 1; m <= 12; m++) {
+    const first = new Date(year, m - 1, 1);
+    const last  = new Date(year, m, 0);
+    if (first > now) break;
+    const inProgress = last > now;
+    const elapsedDays = inProgress ? now.getDate() : last.getDate();
     const shifts = STATE.shifts.filter((s) => {
-      if (s.jobId !== job.id) return false;
+      if (s.jobId !== jobId) return false;
       const d = parseYMD(s.date);
-      return d >= from && d <= now;
+      return d >= first && d <= (inProgress ? now : last);
     });
-    const hours = shifts.reduce((a, s) => a + calcShift(s).hours, 0);
-    return { job, hours, weekly: hours / w, days: shifts.length };
-  }).filter((r) => r.days > 0);
+    const hours = shifts.reduce((a, x) => a + calcShift(x).hours, 0);
+    const weeks = Math.max(1, elapsedDays) / 7;
+    rows.push({ month: m, hours, weekly: hours / weeks, inProgress,
+                elapsedDays, shifts: shifts.length });
+  }
+  return rows.filter((r) => r.shifts > 0);
+}
+
+/* 1つのバイト先について、社会保険の加入判定に関わる状態をまとめる */
+function siJobStatus(job, year) {
+  const rows = monthlyWeeklyHours(job.id, year);
+  const done = rows.filter((r) => !r.inProgress);
+  const current = rows.find((r) => r.inProgress) || null;
+
+  /* 週20時間以上だった「完了した月」が直近から何ヶ月連続しているか。
+     シフトが1件も無い月は rows から落ちているので、
+     月が実際に隣り合っているかどうかも見ないと 1月と3月が連続扱いになる。 */
+  let streak = 0;
+  for (let i = done.length - 1; i >= 0; i--) {
+    if (done[i].weekly < SI.weeklyHours) break;
+    if (streak > 0 && done[i].month !== done[i + 1].month - 1) break;
+    streak++;
+  }
+  const streakMonths = done.slice(done.length - streak).map((r) => r.month);
+
+  const fullTimeLine = (Number(job.fullTimeWeeklyHours) || 40) * SI.fullTimeRatio;
+  const latest = current || done[done.length - 1] || null;
+  const threshold = employerSizeThreshold();
+  const size = Number(job.employerSize) || 0;
+  const sizeOk = size > 0 ? size >= threshold : null;
+  const contract = Number(job.contractWeeklyHours) || 0;
+  const isStudent = STATE.settings.profile.isStudent === true;
+
+  /* 結論。強いものから順に見る。 */
+  let verdict = 'ok', reason = '';
+  if (latest && latest.weekly >= fullTimeLine) {
+    verdict = 'fulltime';
+    reason = `週${fullTimeLine}時間（正社員の4分の3）に達しています。`
+           + `<b>この基準は学生でも加入対象です。</b>`;
+  } else if (contract > 0 && contract >= SI.weeklyHours) {
+    verdict = isStudent ? 'student-exempt' : 'contract';
+    reason = isStudent
+      ? `契約上の所定労働時間が週${contract}時間ですが、在学中の学生は短時間労働者の加入義務の対象外です。`
+      : `契約上の所定労働時間が週${contract}時間で、加入の基準（週${SI.weeklyHours}時間）を満たしています。`;
+  } else if (streak >= SI.consecutiveMonths) {
+    verdict = isStudent ? 'student-exempt' : 'streak';
+    reason = isStudent
+      ? `${streakMonths.join('・')}月が2ヶ月連続で週${SI.weeklyHours}時間を超えていますが、在学中の学生は対象外です。`
+      : `${streakMonths.join('・')}月が2ヶ月連続で週${SI.weeklyHours}時間を超えています。`
+        + `この状態が続く見込みなら、<b>3ヶ月目の初日から加入対象</b>になります。`;
+  } else if (streak === SI.consecutiveMonths - 1 && current && current.weekly >= SI.weeklyHours
+             && done[done.length - 1].month === current.month - 1) {
+    verdict = 'warn';
+    reason = `先月に続いて今月も週${SI.weeklyHours}時間を超えるペースです。`
+           + `このまま月末を迎えると2ヶ月連続になります。`;
+  } else if (latest && latest.weekly >= SI.weeklyHours * 0.85) {
+    verdict = 'near';
+    reason = `週${SI.weeklyHours}時間に近づいています。`;
+  }
+
+  /* 表で色を付ける月。連続を目で追えるように、
+     進行中の月がその連続の続きになっていれば一緒に塗る。 */
+  const runMonths = streakMonths.slice();
+  if (current && current.weekly >= SI.weeklyHours && streak > 0
+      && done[done.length - 1].month === current.month - 1) {
+    runMonths.push(current.month);
+  }
+
+  return { rows, done, current, streak, streakMonths, runMonths, fullTimeLine,
+           contract, size, threshold, sizeOk, isStudent, verdict, reason };
 }
 
 /* 直近3ヶ月の平均月収（全バイト先合算・通勤手当込み）。
@@ -2850,39 +2991,101 @@ function renderSocialInsuranceChecks(agg) {
     }
   }
 
-  /* --- 週の労働時間（加入義務は勤務先ごとに判定される） --- */
-  const rows = weeklyHoursByJob(8);
-  if (!rows.length) {
-    hostW.innerHTML = '<div class="note tight">直近8週間のシフトがないため、週の平均労働時間を出せません。</div>';
+  /* --- 週の労働時間。加入義務は勤務先ごとに判定されるので合算しない --- */
+  const jobs = STATE.jobs.map((job) => ({ job, st: siJobStatus(job, STATE.activeYear) }))
+                         .filter((x) => x.st.rows.length);
+  if (!jobs.length) {
+    hostW.innerHTML = `<div class="note tight">${STATE.activeYear}年のシフトの記録がないため、週の労働時間を出せません。</div>`;
     return;
   }
-  const studentExempt = p.isStudent === true;
+
+  const LEVEL = { fulltime:'crit', contract:'crit', streak:'crit',
+                  warn:'serious', near:'warn', 'student-exempt':'warn', ok:'good' };
+  const LABEL = {
+    fulltime: '4分の3基準に達しています',
+    contract: '契約上すでに加入の基準を満たしています',
+    streak: '2ヶ月連続で週20時間を超えています',
+    warn: 'このままだと2ヶ月連続になります',
+    near: '週20時間に近づいています',
+    'student-exempt': '基準は超えていますが学生除外の対象です',
+    ok: '余裕あり'
+  };
+
   hostW.innerHTML = `
-    <div class="note" style="font-weight:700; color:var(--ink); margin-bottom:8px;">週の平均労働時間（直近8週間）</div>
-    ${rows.map((r) => {
-      const pct = r.weekly / 20;
-      const level = pct >= 1 ? (studentExempt ? 'warn' : 'crit') : pct >= 0.85 ? 'warn' : 'good';
-      return `<div class="meter">
-        <div class="meter-head">
-          <span class="meter-name">${esc(r.job.name)}</span>
-          <span class="meter-limit">基準 週20時間</span>
-          <span class="meter-val tnum">${r.weekly.toFixed(1)}時間/週</span>
+    <div class="note" style="font-weight:700; color:var(--ink); margin-bottom:4px;">
+      週の労働時間（${STATE.activeYear}年・月ごと）
+    </div>
+    <div class="note tight" style="margin-bottom:12px;">
+      加入義務は<b>勤務先ごと</b>に判定されるので、バイト先を分けています（合算しません）。
+    </div>
+    ${jobs.map(({ job, st }) => {
+      const level = LEVEL[st.verdict] || 'good';
+      const monthRows = st.rows.map((r) => {
+        const over = r.weekly >= SI.weeklyHours;
+        const full = r.weekly >= st.fullTimeLine;
+        const inRun = st.runMonths.indexOf(r.month) >= 0;
+        const pct = clamp((r.weekly / SI.weeklyHours) * 100, 0, 100);
+        return `<tr${inRun ? ' class="si-run"' : ''}>
+          <td class="n" style="width:1%; white-space:nowrap;">${r.month}月${
+            r.inProgress ? '<span class="wd">途中</span>' : ''}</td>
+          <td style="width:45%;">
+            <div class="track" style="height:7px;"><div class="fill ${
+              full ? 'crit' : over ? (st.isStudent ? 'warn' : 'serious') : ''
+            }" style="width:${pct.toFixed(1)}%"></div></div>
+          </td>
+          <td class="n"><b>${r.weekly.toFixed(1)}</b><span class="wd">h/週</span></td>
+          <td class="n" style="width:1%;">${
+            full ? '<span class="badge hol">3/4</span>'
+                 : over ? '<span class="badge ovn">20h超</span>'
+                        : '<span class="wd">—</span>'}</td>
+        </tr>`;
+      }).join('');
+
+      return `<div class="si-job">
+        <div class="meter-head" style="margin-bottom:8px;">
+          <span class="meter-name">${esc(job.name)}</span>
+          <span class="meter-limit">週${SI.weeklyHours}時間 / 4分の3は週${st.fullTimeLine}時間</span>
         </div>
-        <div class="track"><div class="fill ${level === 'good' ? '' : level}"
-          style="width:${clamp(pct * 100, 0, 100).toFixed(1)}%"></div></div>
-        <div class="meter-foot s-${level}">${statusIcon(level)}<span>${
-          pct >= 1 ? '週20時間を超えています' : pct >= 0.85 ? '週20時間に近づいています' : '余裕あり'
-        }</span></div>
+        <table class="si-tbl"><tbody>${monthRows}</tbody></table>
+        <div class="meter-foot s-${level}" style="margin-top:8px;">
+          ${statusIcon(level)}<span>${LABEL[st.verdict]}</span>
+        </div>
+        ${st.reason ? `<div class="meter-note">${st.reason}</div>` : ''}
+        <div class="meter-note" style="color:var(--ink-3);">
+          契約上の所定労働時間: ${st.contract > 0 ? `週${st.contract}時間`
+            : '<b>未入力</b>（設定タブで入れると判定が正確になります）'}
+          ／ 従業員数: ${st.size > 0 ? employerSizeLabel(st.size) : '未入力'}
+          ${st.sizeOk === false
+            ? `<br>従業員数が現在の企業規模要件（${st.threshold}人以上）に届いていないため、
+               短時間労働者としての加入対象にはなりません。`
+            : st.sizeOk === true
+              ? `<br>企業規模要件（${st.threshold}人以上）を満たしています。` : ''}
+        </div>
       </div>`;
     }).join('')}
-    <div class="note tight" style="margin-top:8px;">
-      社会保険の加入義務は<b>勤務先ごと</b>に判定されるため、バイト先を分けて表示しています
-      （合算はしません）。2026年10月1日に月8.8万円の賃金要件が廃止され、以後は
-      週20時間以上・2ヶ月超の雇用見込み・従業員51人以上といった条件が中心になります。<br>
-      ここに出しているのは<b>実際に働いた時間の平均</b>で、判定に使われるのは
-      契約上の「所定労働時間」です。目安としてご覧ください。
-      ${studentExempt ? '<br><b>在学中の学生は、この加入義務の対象外（学生除外）です。</b>' : ''}
-    </div>`;
+
+    <details class="acc" style="margin-top:12px; margin-bottom:0;">
+      <summary>この判定の中身</summary>
+      <div class="acc-body"><div class="note">
+        <b>加入のルートは2つあります。</b><br>
+        ① <b>4分の3基準</b> … 週の所定労働時間が正社員の4分の3以上（多くは週30時間）。
+        <b>学生でも加入対象</b>になり、企業規模も関係ありません。<br>
+        ② <b>短時間労働者の適用拡大</b> … 週${SI.weeklyHours}時間以上・2ヶ月超の雇用見込み・
+        学生でないこと・企業規模要件（現在は${employerSizeThreshold()}人以上）。
+        月8.8万円の賃金要件は2026年10月1日に廃止されました。
+        <div class="hr"></div>
+        <b>所定が週20時間未満でも対象になることがあります。</b>
+        実際の労働時間が<b>2ヶ月連続で週20時間以上</b>になり、その後も続く見込みなら、
+        3ヶ月目の初日から被保険者になります。月ごとに並べているのはこれを追うためです。
+        <div class="hr"></div>
+        <b>企業規模要件はこれから段階的に無くなります。</b>
+        2027年10月に36人以上、2029年10月に21人以上、2032年10月に11人以上、
+        <b>2035年10月に撤廃</b>されて全企業が対象になります。
+        <div class="hr"></div>
+        ここに出しているのは<b>実際に働いた時間</b>です。正式な判定に使われるのは
+        契約上の「所定労働時間」なので、最終的な判断は勤務先にご確認ください。
+      </div></div>
+    </details>`;
 }
 
 /* 壁として金額を追えないが、知らないと損をするもの */
@@ -3062,6 +3265,24 @@ function renderJobs() {
           <select data-jf="paymentDay" data-ji="${i}">${dayOptionsHTML(job.paymentDay)}</select></div>
         <div class="field"><label>支払日が休日の場合</label>
           <select data-jf="holidayAdjustment" data-ji="${i}">${optHTML([['before','前営業日'],['after','翌営業日'],['none','調整しない']], job.holidayAdjustment)}</select></div>
+      </div>
+
+      <div class="hr"></div>
+      <div class="note" style="margin-bottom:8px;"><b>社会保険の加入判定に使う情報</b></div>
+      <div class="grid">
+        <div class="field"><label>契約上の週の所定労働時間</label>
+          <input type="number" step="0.5" min="0" data-jf="contractWeeklyHours" data-ji="${i}"
+                 value="${job.contractWeeklyHours || ''}" placeholder="わからなければ空欄"></div>
+        <div class="field"><label>勤務先の従業員数</label>
+          <select data-jf="employerSize" data-ji="${i}">${optHTML(EMPLOYER_SIZE_OPTS, job.employerSize || 0)}</select></div>
+        <div class="field"><label>正社員の週の所定労働時間</label>
+          <input type="number" step="0.5" min="1" data-jf="fullTimeWeeklyHours" data-ji="${i}"
+                 value="${job.fullTimeWeeklyHours || 40}"></div>
+      </div>
+      <div class="note tight" style="margin-top:6px;">
+        「壁」タブの週20時間の判定に使います。契約上の所定労働時間は雇用契約書か労働条件通知書に
+        書かれています。従業員数は厚生年金の被保険者数（おおよそで構いません）で、
+        正社員の所定労働時間は4分の3基準の分母になります（多くは週40時間）。
       </div>
 
       ${STATE.jobs.length > 1
@@ -3442,7 +3663,8 @@ PROFILE_BINDINGS.forEach(([id, key, cast]) => {
 
 /* --- バイト先設定 --- */
 const NUMERIC_JOB_FIELDS = new Set(['baseWage','sunAdd','tripFare','passFare','passThreshold',
-                                    'cutoffDay','paymentMonthsAfter','paymentDay','timeRoundUnit']);
+                                    'cutoffDay','paymentMonthsAfter','paymentDay','timeRoundUnit',
+                                    'contractWeeklyHours','employerSize','fullTimeWeeklyHours']);
 const BOOL_JOB_FIELDS = new Set(['commuteTaxExempt','autoNightPremium','autoOvertimePremium']);
 
 $('jobs-list').addEventListener('change', async (e) => {
