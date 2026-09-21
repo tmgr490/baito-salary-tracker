@@ -797,8 +797,9 @@ body.setup-mode .toast{ bottom:20px; }
       ここでの回答に応じて表示される壁が切り替わります。
     </div>
     <div class="grid">
-      <div class="field"><label for="su-age">年齢(12月31日時点)</label>
-        <input type="number" id="su-age" min="0" max="120" step="1" inputmode="numeric" placeholder="例: 20"></div>
+      <div class="field"><label for="su-birth">生まれた年(西暦)</label>
+        <input type="number" id="su-birth" min="1900" max="2100" step="1" inputmode="numeric" placeholder="例: 2006">
+        <div class="note tight" id="su-age-echo" style="margin-top:4px;"></div></div>
       <div class="field"><label for="su-student">学生ですか</label>
         <select id="su-student">
           <option value="">選択してください</option>
@@ -836,6 +837,21 @@ body.setup-mode .toast{ bottom:20px; }
         <select id="su-dep-shaho">
           <option value="">選択してください</option>
           <option value="true">はい</option><option value="false">いいえ</option>
+        </select></div>
+      <div class="field"><label for="su-disability">障害者控除</label>
+        <select id="su-disability">
+          <option value="">選択してください</option>
+          <option value="none">該当しない</option>
+          <option value="normal">障害者控除（一般）</option>
+          <option value="special">特別障害者控除</option>
+          <option value="special_live">同居特別障害者控除</option>
+        </select></div>
+      <div class="field"><label for="su-single">ひとり親控除・寡婦控除</label>
+        <select id="su-single">
+          <option value="">選択してください</option>
+          <option value="none">該当しない</option>
+          <option value="hitorioya">ひとり親控除</option>
+          <option value="kafu">寡婦控除</option>
         </select></div>
     </div>
     <div class="note tight" style="margin-top:8px;">
@@ -1149,7 +1165,9 @@ body.setup-mode .toast{ bottom:20px; }
   <div class="card">
     <div class="card-head"><h2>プロフィール</h2></div>
     <div class="grid">
-      <div class="field"><label for="s-age">年齢(12/31時点)</label><input type="number" id="s-age" min="0" max="120" step="1" inputmode="numeric"></div>
+      <div class="field"><label for="s-birth">生まれた年(西暦)</label>
+        <input type="number" id="s-birth" min="1900" max="2100" step="1" inputmode="numeric" placeholder="例: 2006">
+        <div class="note tight" id="s-age-echo" style="margin-top:4px;"></div></div>
       <div class="field"><label for="s-student">学生ですか</label>
         <select id="s-student"><option value="">選択してください</option><option value="true">はい</option><option value="false">いいえ</option></select>
       </div>
@@ -1188,6 +1206,23 @@ body.setup-mode .toast{ bottom:20px; }
       </div>
       <div class="field"><label for="s-dep-shaho">社会保険の扶養に入っている</label>
         <select id="s-dep-shaho"><option value="">選択してください</option><option value="true">はい</option><option value="false">いいえ</option></select>
+      </div>
+      <div class="field"><label for="s-disability">障害者控除</label>
+        <select id="s-disability">
+          <option value="">選択してください</option>
+          <option value="none">該当しない</option>
+          <option value="normal">障害者控除（一般）</option>
+          <option value="special">特別障害者控除</option>
+          <option value="special_live">同居特別障害者控除</option>
+        </select>
+      </div>
+      <div class="field"><label for="s-single">ひとり親控除・寡婦控除</label>
+        <select id="s-single">
+          <option value="">選択してください</option>
+          <option value="none">該当しない</option>
+          <option value="hitorioya">ひとり親控除</option>
+          <option value="kafu">寡婦控除</option>
+        </select>
       </div>
     </div>
     <div class="note" style="margin-top:12px;">
@@ -1384,6 +1419,7 @@ const TAX_TABLE = {
   2025: {
     era: '令和7年分',
     kyuyoKojoMin: 650000,      // 給与所得控除の最低保障額
+    kyuyoKojoFlatUpTo: 1900000,// この給与収入までは最低保障額がそのまま控除額になる
     /* 住民税の非課税限度額(単身・扶養なし)。
        均等割は生活保護の級地区分で変わるが、所得割は全国共通。
        均等割の限度額が所得割の限度額を超えることはないので、先に来るのは常に均等割。 */
@@ -1403,7 +1439,9 @@ const TAX_TABLE = {
   },
   2026: {
     era: '令和8年分',
+    /* 本則69万 ＋ 令和8・9年限りの特例5万（給与収入220万円以下のみ） */
     kyuyoKojoMin: 740000,
+    kyuyoKojoFlatUpTo: 2200000,
     juuminzeiKinto: { 1: 450000, 2: 415000, 3: 380000 },
     juuminzeiShotokuwari: 450000,
     juuminzeiHikazei: 450000,
@@ -1421,6 +1459,7 @@ const TAX_TABLE = {
   2027: {
     era: '令和9年分',
     kyuyoKojoMin: 740000,
+    kyuyoKojoFlatUpTo: 2200000,
     juuminzeiKinto: { 1: 450000, 2: 415000, 3: 380000 },
     juuminzeiShotokuwari: 450000,
     juuminzeiHikazei: 450000,
@@ -1502,14 +1541,107 @@ function employerSizeLabel(n) {
 /* 勤労学生控除の控除額（所得税・住民税とも据置き） */
 const KINRO_GAKUSEI_KOJO = { shotokuzei: 270000, juuminzei: 260000 };
 
+/* --------------------------------------------------------------------------
+   年齢と控除
+
+   扶養控除・特定扶養控除・老人扶養控除は「その年の12月31日時点の年齢」で
+   決まる。生まれた年さえ分かれば 対象年 − 生年 で正確に出せるので、
+   年を切り替えても判定がずれない。
+   -------------------------------------------------------------------------- */
+
+/* その年の12月31日時点の年齢。生年が未入力なら 0（＝不明） */
+function ageInYear(year) {
+  const b = Number(STATE.settings.profile.birthYear) || 0;
+  if (!b) return 0;
+  return Math.max(0, year - b);
+}
+
+/* 入力した生年が何歳にあたるのか、その年齢で何が変わるのかを入力欄の下に出す。
+   年齢からの移行で1年ずれることがあるので、本人が見て気づけるようにする。 */
+function ageEchoHTML(birthYear) {
+  const b = Number(birthYear) || 0;
+  if (!b) return '';
+  const y = STATE.activeYear || new Date().getFullYear();
+  const a = y - b;
+  if (a < 0 || a > 120) return '西暦で入力してください（例: 2006）';
+  const tags = [];
+  if (a < 16) tags.push('扶養控除の対象外（16歳未満）');
+  if (a < MINOR_AGE) tags.push('住民税は合計所得135万円まで非課税（未成年）');
+  if (a >= 19 && a <= 22) tags.push('特定親族特別控除・社会保険150万円の対象');
+  if (a >= 70) tags.push('老人扶養控除の対象');
+  return `${y}年12月31日時点で <b>${a}歳</b>`
+       + (tags.length ? `<br>${tags.join(' / ')}` : '');
+}
+
+/* 住民税の未成年判定は賦課期日（翌年1月1日）時点。
+   1月1日生まれを除けば12月31日時点と同じ年齢になる。 */
+const isMinorFor = (year) => { const a = ageInYear(year); return a > 0 && a < MINOR_AGE; };
+
+/* 給与収入から給与所得金額を出す。
+   最低保障額はある収入までは定額で、そこから先は率で決まる。
+   壁はすべて定額の範囲に収まるが、超えた後の税額を出すときに効いてくる。 */
+function kyuyoShotoku(wage, T) {
+  const w = Math.max(0, wage);
+  const flatUpTo = T.kyuyoKojoFlatUpTo || 1900000;
+  if (w <= flatUpTo) return Math.max(0, w - T.kyuyoKojoMin);
+  if (w <= 3600000) return w * 0.7 - 80000;
+  if (w <= 6600000) return w * 0.8 - 440000;
+  if (w <= 8500000) return w * 0.9 - 1100000;
+  return w - 1950000;
+}
+
+/* 本人の事情による控除（障害者控除・ひとり親控除・寡婦控除）の合計。
+   どちらも所得制限は500万円などで、バイトの収入帯では常に使える。 */
+function personalKojo() {
+  const p = STATE.settings.profile;
+  const out = { shotokuzei: 0, juuminzei: 0, names: [] };
+  const d = SHOGAISHA_KOJO[p.disability];
+  if (d) { out.shotokuzei += d.shotokuzei; out.juuminzei += d.juuminzei; out.names.push(d.name); }
+  const h = HITORIOYA_KOJO[p.single];
+  if (h) { out.shotokuzei += h.shotokuzei; out.juuminzei += h.juuminzei; out.names.push(h.name); }
+  return out;
+}
+
+/* 住民税が全額非課税になる「合計所得135万円以下」の措置が効くか。
+   未成年者・障害者・寡婦・ひとり親が対象。 */
+function juuminzeiHikazei135(year) {
+  const p = STATE.settings.profile;
+  const reasons = [];
+  if (isMinorFor(year)) reasons.push('未成年者');
+  if (SHOGAISHA_KOJO[p.disability]) reasons.push('障害者');
+  if (p.single === 'hitorioya') reasons.push('ひとり親');
+  if (p.single === 'kafu') reasons.push('寡婦');
+  return reasons.length ? { limit: JUUMIN_HIKAZEI_135, reasons } : null;
+}
+
 const FUKKO = 1.021;          // 復興特別所得税
 const JUUMIN_RATE = 0.10;     // 住民税 所得割
 const JUUMIN_KINTO = 5000;    // 住民税 均等割 + 森林環境税
 const JUUMIN_CHOSEI = 2500;   // 調整控除(課税所得200万円以下の一般的なケース)
 
 /* 住民税側の人的控除額（所得税との差額計算用） */
-const JUUMIN_KOJO = { fuyou: 330000, tokutei: 450000, haigusha: 330000 };
-const SHOTOKU_KOJO = { fuyou: 380000, tokutei: 630000, haigusha: 380000 };
+/* 扶養している側が受けられる控除の額。壁を超えた時に相手の税額が
+   いくら増えるかの概算に使う。老人＝その年の12月31日時点で70歳以上。 */
+const JUUMIN_KOJO  = { fuyou: 330000, fuyouRoujin: 380000, tokutei: 450000,
+                       haigusha: 330000, haigushaRoujin: 380000 };
+const SHOTOKU_KOJO = { fuyou: 380000, fuyouRoujin: 480000, tokutei: 630000,
+                       haigusha: 380000, haigushaRoujin: 480000 };
+
+/* 本人の事情による控除。所得税と住民税で額が違う。 */
+const SHOGAISHA_KOJO = {
+  normal:       { shotokuzei: 270000, juuminzei: 260000, name: '障害者控除' },
+  special:      { shotokuzei: 400000, juuminzei: 300000, name: '特別障害者控除' },
+  special_live: { shotokuzei: 750000, juuminzei: 530000, name: '同居特別障害者控除' }
+};
+const HITORIOYA_KOJO = {
+  hitorioya: { shotokuzei: 350000, juuminzei: 300000, name: 'ひとり親控除' },
+  kafu:      { shotokuzei: 270000, juuminzei: 260000, name: '寡婦控除' }
+};
+/* 未成年者・障害者・寡婦・ひとり親は、合計所得がこの額以下なら住民税が全額非課税。
+   均等割・所得割の限度額とは別枠の措置。 */
+const JUUMIN_HIKAZEI_135 = 1350000;
+/* 住民税の未成年判定は賦課期日(翌年1月1日)時点。成年年齢の引き下げで18歳未満。 */
+const MINOR_AGE = 18;
 
 function taxYearData(year) {
   if (TAX_TABLE[year]) return { ...TAX_TABLE[year], year, fallback: null };
@@ -1571,7 +1703,10 @@ function makeJob(over) {
 
 /* null は「未回答」。初回セットアップで埋まるまで、その項目に依存する壁は出さない。 */
 const DEFAULT_PROFILE = {
-  age: null,
+  /* 年齢そのものではなく生まれた年を持つ。扶養控除や特定親族特別控除は
+     「その年の12月31日時点の年齢」で決まるので、年齢を1つ持つだけでは
+     対象年を切り替えたときに判定がずれる。生年なら どの年でも正確に出せる。 */
+  birthYear: null,
   isStudent: null,
   usesGakuseiTokurei: null,
   dependentTax: null,
@@ -1583,7 +1718,9 @@ const DEFAULT_PROFILE = {
   dependentRelationship: '',
   supporterTaxRate: 0.10,
   kyuchi: null,              // 住民税の均等割の非課税限度額に効く生活保護の級地区分
-  usesKinroGakusei: null     // 勤労学生控除を申告しているか（学生のときだけ意味がある）
+  usesKinroGakusei: null,    // 勤労学生控除を申告しているか（学生のときだけ意味がある）
+  disability: '',            // '' 未選択 / 'none' / 'normal' / 'special' / 'special_live'
+  single: ''                 // '' 未選択 / 'none' / 'hitorioya' / 'kafu'
 };
 
 let STATE = {
@@ -2266,10 +2403,21 @@ function wallConfidence(agg) {
   const kyuchiMatters = Math.max(agg.wageBasis, agg.wageBasisProjection) >= kintoLine - 200000;
 
   return confidence([
-    { name: '年齢', weight: 18, filled: Number(p.age) > 0,
-      assume: 'いまは年齢による優遇が無いものとして出しています。',
-      effect: '19〜22歳なら、扶養している方の特定親族特別控除と、社会保険の扶養150万円'
-            + '（配偶者を除く）が効きます。壁の位置そのものが変わります。' },
+    { name: '生まれた年', weight: 18, filled: Number(p.birthYear) > 0,
+      assume: 'いまは年齢による優遇も制限も無いものとして出しています。',
+      effect: '19〜22歳なら特定親族特別控除と社会保険の扶養150万円（配偶者を除く）、'
+            + '16歳未満なら扶養控除の対象外、70歳以上なら老人扶養控除、'
+            + '18歳未満なら住民税が合計所得135万円まで非課税。壁の位置そのものが変わります。' },
+    { name: '障害者控除に当てはまるか', weight: 6,
+      filled: p.disability === 'none' || !!SHOGAISHA_KOJO[p.disability],
+      assume: 'いまは当てはまらない前提で出しています。',
+      effect: '当てはまると所得税の壁が27万〜75万円うしろにずれ、'
+            + '住民税も合計所得135万円まで非課税になります。' },
+    { name: 'ひとり親・寡婦に当てはまるか', weight: 6,
+      filled: p.single === 'none' || !!HITORIOYA_KOJO[p.single],
+      assume: 'いまは当てはまらない前提で出しています。',
+      effect: '当てはまると所得税の壁が27万〜35万円うしろにずれ、'
+            + '住民税も合計所得135万円まで非課税になります。' },
     { name: '税法上の扶養に入っているか', weight: 15, filled: tri(p.dependentTax),
       assume: 'いまは扶養に入っていない前提で、自分にかかる税金だけを出しています。',
       effect: '扶養に入っているなら、あなたの収入が扶養している方の税額にも跳ね返ります。' },
@@ -2323,7 +2471,9 @@ function recentMonthlyAverage(agg, months) {
 /* この人に適用される扶養の年収基準と、それに対応する月額基準 */
 function fuyouThreshold() {
   const p = STATE.settings.profile;
-  const age = Number(p.age) || 0;
+  /* 社会保険の年齢判定は認定時点だが、アプリは生年しか持たないので
+     対象年の年末時点の年齢で見る。境目の年はズレることがある。 */
+  const age = ageInYear(STATE.activeYear);
   const rel = p.dependentRelationship || 'other';
   const studentAge = rel !== 'spouse' && age >= 19 && age <= 22;
   const annual = studentAge ? SI.fuyou150 : SI.fuyou130;
@@ -2349,33 +2499,47 @@ function kinroGakuseiInfo(year) {
 function generateWalls(year) {
   const p = STATE.settings.profile;
   const T = taxYearData(year);
-  const age = Number(p.age) || 0;
+  const age = ageInYear(year);
   const rel = p.dependentRelationship || 'other';
   const studentAge = rel !== 'spouse' && age >= 19 && age <= 22;
+  const roujin = age >= 70;
   const walls = [];
 
   const kyuchi = Number(p.kyuchi) || 1;
   const kintoLimit = (T.juuminzeiKinto || {})[kyuchi] || T.juuminzeiHikazei;
-  const juuminzeiWall = kintoLimit + T.kyuyoKojoMin;
   const shotokuwariWall = T.juuminzeiShotokuwari + T.kyuyoKojoMin;
   const gakusei = kinroGakuseiInfo(year);
+  const hikazei135 = juuminzeiHikazei135(year);
+  /* 未成年者・障害者・寡婦・ひとり親は合計所得135万円以下なら全額非課税。
+     この措置のほうが均等割の限度額より後ろにあるので、壁もそちらに移る。 */
+  const juuminzeiWall = hikazei135
+    ? hikazei135.limit + T.kyuyoKojoMin
+    : kintoLimit + T.kyuyoKojoMin;
   walls.push({
     key: 'juuminzei', name: '住民税', amount: juuminzeiWall, basis: 'wage',
-    note: `超えると翌年度から住民税がかかり始めます。まず均等割＋森林環境税の${yen(JUUMIN_KINTO)}、`
-        + `さらに${man(shotokuwariWall)}を超えると所得割（およそ10%）が加わります。`
-        + (kyuchi !== 1
+    note: (hikazei135
+        ? `<b>${hikazei135.reasons.join('・')}に当てはまるため、合計所得${man(hikazei135.limit)}`
+          + `（給与収入${man(juuminzeiWall)}）までは住民税が全額かかりません。</b>`
+          + `均等割も所得割も対象外になる措置で、級地区分にも左右されません。`
+          + (isMinorFor(year) ? `<br>未成年かどうかは<b>${year + 1}年1月1日時点</b>で判定します（18歳未満）。` : '')
+          + `<br>この措置に当てはまらない人の場合は${man(kintoLimit + T.kyuyoKojoMin)}が目安です。`
+        : `超えると翌年度から住民税がかかり始めます。まず均等割＋森林環境税の${yen(JUUMIN_KINTO)}、`
+          + `さらに${man(shotokuwariWall)}を超えると所得割（およそ10%）が加わります。`)
+        + (hikazei135 ? '' : kyuchi !== 1
             ? `<br>お住まいを<b>${kyuchi}級地</b>として計算しています。級地は市区町村ごとに決まっており、`
               + `均等割の非課税限度額が変わります（1級地なら${man(T.juuminzeiKinto[1] + T.kyuyoKojoMin)}）。`
             : `<br>均等割の非課税限度額は市区町村の級地区分で変わります。`
               + `2級地なら${man(T.juuminzeiKinto[2] + T.kyuyoKojoMin)}、3級地なら${man(T.juuminzeiKinto[3] + T.kyuyoKojoMin)}と`
               + `早くかかり始めます（設定タブで変更できます）。`)
-        + (gakusei
+        + (gakusei && !hikazei135
             ? `<br><b>勤労学生控除（住民税${man(KINRO_GAKUSEI_KOJO.juuminzei)}）を申告しているため、`
               + `所得割は${man(gakusei.shotokuwariFreeUpTo)}までかかりません。</b>`
               + `均等割の${yen(JUUMIN_KINTO)}は${man(juuminzeiWall)}を超えた時点で発生します。`
             : '')
         + `<br>（${T.era}の収入に対する住民税＝${year + 1}年度分。`
-        + `非課税限度額${man(kintoLimit)}＋給与所得控除${man(T.kyuyoKojoMin)}）`,
+        + (hikazei135
+            ? `合計所得${man(hikazei135.limit)}＋給与所得控除${man(T.kyuyoKojoMin)}）`
+            : `非課税限度額${man(kintoLimit)}＋給与所得控除${man(T.kyuyoKojoMin)}）`),
     src: '総務省（個人住民税）',
     url: 'https://www.soumu.go.jp/main_sosiki/jichi_zeisei/czaisei/czaisei_seido/149767_03.html'
   });
@@ -2401,12 +2565,22 @@ function generateWalls(year) {
     if (rel === 'spouse') {
       walls.push({
         key: 'haigusha', name: '配偶者控除・配偶者特別控除', amount: T.haigushaFull, basis: 'wage',
-        note: `${man(T.fuyou)}までは配偶者控除で満額38万円。超えても${man(T.haigushaFull)}までは配偶者特別控除で満額38万円が維持され、`
+        note: (roujin
+                ? `${man(T.fuyou)}までは<b>老人控除対象配偶者</b>として配偶者控除48万円（12/31時点で70歳以上）。`
+                  + `これを超えると配偶者特別控除38万円に下がり、${man(T.haigushaFull)}までその38万円が維持されます。`
+                  + `<b>${man(T.fuyou)}のところに48万→38万の段差があります。</b>`
+                : `${man(T.fuyou)}までは配偶者控除で満額38万円。超えても${man(T.haigushaFull)}までは配偶者特別控除で満額38万円が維持され、`)
             + `そこから${man(T.haigushaZero)}に向けて段階的に減っていきます（${man(T.haigushaZero)}超でゼロ）。`
-            + 'バーの基準は「満額が維持される上限」です。',
+            + 'バーの基準は「満額が維持される上限」です。'
+            + '<br><b>配偶者控除・配偶者特別控除は、控除を受ける側の合計所得が1,000万円を超えると使えません</b>'
+            + '（900万円を超えると段階的に減ります）。このアプリは相手の所得までは見ていないので、'
+            + '該当しそうな場合はご注意ください。',
         src: '国税庁 No.1195 配偶者特別控除',
         url: 'https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1195.htm'
       });
+    } else if (age > 0 && age < 16) {
+      /* 年少扶養親族。控除そのものが存在しないので「壁」も無い。
+         壁を出すと「超えると控除が消える」と読めてしまうため出さない。 */
     } else if (studentAge) {
       walls.push({
         key: 'tokutei', name: '特定扶養控除・特定親族特別控除', amount: T.tokuteiFull, basis: 'wage',
@@ -2417,10 +2591,14 @@ function generateWalls(year) {
         url: 'https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1177.htm'
       });
     } else {
-      const caveat = age < 16 ? '（16歳未満は扶養控除の対象外で、児童手当等の対象になります）' : '';
       walls.push({
-        key: 'fuyoukojo', name: '扶養控除', amount: T.fuyou, basis: 'wage',
-        note: `1円でも超えると扶養控除（38万円）が丸ごと無くなる「崖」です。19〜22歳のような段階的な緩和措置はありません。${caveat}`
+        key: 'fuyoukojo', name: roujin ? '老人扶養控除' : '扶養控除', amount: T.fuyou, basis: 'wage',
+        note: `1円でも超えると${roujin ? '老人扶養控除（48万円）' : '扶養控除（38万円）'}`
+            + `が丸ごと無くなる「崖」です。19〜22歳のような段階的な緩和措置はありません。`
+            + (roujin
+                ? `<br>12/31時点で70歳以上のため老人扶養控除（48万円）で計算しています。`
+                  + `扶養している方と<b>同居</b>している直系尊属なら同居老親等となり58万円です。`
+                : '')
             + `（扶養親族の合計所得金額要件${man(T.fuyou - T.kyuyoKojoMin)}＋給与所得控除${man(T.kyuyoKojoMin)}）`,
         src: '国税庁 No.1180 扶養控除',
         url: 'https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1180.htm',
@@ -2434,16 +2612,25 @@ function generateWalls(year) {
     const ageNote = studentAge
       ? '<b>2025年10月1日以降の認定分から、19〜22歳（配偶者を除く）は130万円ではなく150万円が収入要件です。</b>在学しているかは関係なく、年齢だけで決まります。'
       : '';
-    const nenkin = p.isStudent
-      ? (p.usesGakuseiTokurei
-          ? `学生納付特例を利用中とのことなので、在学中の国民年金保険料は猶予され実質0円です（追納は任意）。`
-          : `学生納付特例は未利用とのこと。20歳以上は納付義務があり年額${yen(SI.nenkinMonthly * 12)}（令和8年度・月額${yen(SI.nenkinMonthly)}）です。まず学生納付特例の申請をおすすめします。`)
-      : `20歳以上は国民年金の納付義務があり年額${yen(SI.nenkinMonthly * 12)}（令和8年度・月額${yen(SI.nenkinMonthly)}）です（低所得なら免除制度あり）。`;
+    const nenkin = (age > 0 && age < 20)
+      ? `国民年金の納付義務は20歳からなので、いまはまだ関係ありません（${year}年12月31日時点で${age}歳）。`
+        + `20歳になったら月額${yen(SI.nenkinMonthly)}（令和8年度）がかかります。`
+        + (p.isStudent ? '在学中なら学生納付特例で猶予できます。' : '')
+      : p.isStudent
+        ? (p.usesGakuseiTokurei
+            ? `学生納付特例を利用中とのことなので、在学中の国民年金保険料は猶予され実質0円です（追納は任意）。`
+            : `学生納付特例は未利用とのこと。20歳以上は納付義務があり年額${yen(SI.nenkinMonthly * 12)}（令和8年度・月額${yen(SI.nenkinMonthly)}）です。まず学生納付特例の申請をおすすめします。`)
+        : `20歳以上は国民年金の納付義務があり年額${yen(SI.nenkinMonthly * 12)}（令和8年度・月額${yen(SI.nenkinMonthly)}）です（低所得なら免除制度あり）。`;
+    /* 障害厚生年金を受けられる程度の障害がある場合、被扶養者の収入要件は180万円未満 */
+    const shogaiNote = SHOGAISHA_KOJO[p.disability]
+      ? '<br><b>障害厚生年金を受けられる程度の障害がある方は、収入要件が180万円未満になります。</b>'
+        + '税法上の障害者控除の区分とは判定基準が違うので、加入している健康保険組合にご確認ください。'
+      : '';
     walls.push({
       key: 'shakaihoken130', name: '社会保険上の扶養', amount, basis: 'wagePlusCommute',
       note: `${ageNote}超えると扶養している方の健康保険の扶養から外れ、自分で国民健康保険（または勤務先の社保）に加入します。`
           + '<b>この壁だけは非課税の通勤手当も収入に含めて判定</b>するため、バーの金額も通勤費込みです。<br>'
-          + `国民年金は130万円の壁とは別の話です: ${nenkin}`,
+          + `国民年金は130万円の壁とは別の話です: ${nenkin}${shogaiNote}`,
       src: '日本年金機構（被扶養者の収入要件）',
       url: 'https://www.nenkin.go.jp/service/kounen/tekiyo/hihokensha1/20141202.html'
     });
@@ -2465,9 +2652,11 @@ function generateWalls(year) {
     });
   }
 
+  const pk = personalKojo();
   walls.push({
-    key: 'shotokuzei', name: '所得税（自分）', amount: T.shotokuzei, basis: 'wage',
-    note: `${T.era}はここまで自分の所得税がかかりません（給与所得控除${man(T.kyuyoKojoMin)}＋基礎控除${man(T.shotokuzei - T.kyuyoKojoMin)}）。`
+    key: 'shotokuzei', name: '所得税（自分）', amount: T.shotokuzei + pk.shotokuzei, basis: 'wage',
+    note: `${T.era}はここまで自分の所得税がかかりません（給与所得控除${man(T.kyuyoKojoMin)}＋基礎控除${man(T.shotokuzei - T.kyuyoKojoMin)}`
+        + (pk.shotokuzei ? `＋${pk.names.join('＋')}${man(pk.shotokuzei)}` : '') + '）。'
         + '超えた分にはおおよそ5.105%（所得税5%＋復興特別所得税）が課税されます。'
         + (year === 2026 || year === 2027
             ? 'この金額は令和8年分・令和9年分限りの時限措置によるもので、令和10年分以降は物価に応じて再設定される見込みです。'
@@ -2492,15 +2681,21 @@ function wallImpact(wall, excess, agg, year) {
       /* 均等割と所得割は別々に判定する。
          均等割 … 合計所得が級地別の限度額を超えたら定額
          所得割 … 合計所得が45万を超えたうえで、所得控除を引いた残りに10%
-         勤労学生控除があると所得割だけ後ろにずれる。 */
+         勤労学生控除や障害者控除があると所得割だけ後ろにずれる。
+         未成年者・障害者・寡婦・ひとり親は合計所得135万円以下なら全額非課税。 */
       const kyuchi = Number(p.kyuchi) || 1;
       const kintoLimit = (T.juuminzeiKinto || {})[kyuchi] || T.juuminzeiHikazei;
-      const total = Math.max(0, agg.wageBasis - T.kyuyoKojoMin);   // 合計所得金額
+      const total = kyuyoShotoku(agg.wageBasis, T);                // 合計所得金額
+      const h135 = juuminzeiHikazei135(year);
+      if (h135 && total <= h135.limit) {
+        return { amount: 0, who: '自分', exact: false, whole: true };
+      }
       const kinto = total > kintoLimit ? JUUMIN_KINTO : 0;
 
       const gakusei = kinroGakuseiInfo(year);
       const usesGakusei = !!gakusei && total <= T.kinroGakuseiLimit;
-      const kojo = T.juuminzeiKiso + (usesGakusei ? KINRO_GAKUSEI_KOJO.juuminzei : 0);
+      const kojo = T.juuminzeiKiso + personalKojo().juuminzei
+                 + (usesGakusei ? KINRO_GAKUSEI_KOJO.juuminzei : 0);
       const shotokuwari = total > T.juuminzeiShotokuwari
         ? Math.max(0, (total - kojo) * JUUMIN_RATE - JUUMIN_CHOSEI)
         : 0;
@@ -2521,9 +2716,14 @@ function wallImpact(wall, excess, agg, year) {
       return { amount: agg.fullBasis * SI.kokuhoRate + nenkin, who: '自分',
                whole: true, exact: false, spread: true };
     }
-    case 'fuyoukojo':
-      return { amount: SHOTOKU_KOJO.fuyou * rate * FUKKO + JUUMIN_KOJO.fuyou * JUUMIN_RATE,
+    case 'fuyoukojo': {
+      /* 12/31時点で70歳以上なら老人扶養控除（48万/38万）になる */
+      const roujin = ageInYear(year) >= 70;
+      const sk = roujin ? SHOTOKU_KOJO.fuyouRoujin : SHOTOKU_KOJO.fuyou;
+      const jk = roujin ? JUUMIN_KOJO.fuyouRoujin : JUUMIN_KOJO.fuyou;
+      return { amount: sk * rate * FUKKO + jk * JUUMIN_RATE,
                who: '扶養している方', cliff: true, exact: false };
+    }
     case 'tokutei': {
       const r = ratio(T.tokuteiFull, T.tokuteiZero);
       return { amount: r * (SHOTOKU_KOJO.tokutei * rate * FUKKO + JUUMIN_KOJO.tokutei * JUUMIN_RATE),
@@ -2535,6 +2735,8 @@ function wallImpact(wall, excess, agg, year) {
                who: '配偶者', gradual: true, ratio: r, exact: false };
     }
     case 'shotokuzei':
+      /* 壁の額に本人の控除（障害者控除など）が織り込まれているので、
+         その壁からの超過額にそのまま税率をかければよい */
       return { amount: e * 0.05105, who: '自分', exact: false };
     default:
       return null;
@@ -3573,7 +3775,41 @@ function renderSocialInsuranceChecks(agg) {
 /* 壁として金額を追えないが、知らないと損をするもの */
 function renderOtherNotes() {
   const p = STATE.settings.profile;
+  const year = STATE.activeYear;
+  const age = ageInYear(year);
   const items = [];
+
+  /* 16歳未満は扶養控除そのものが無い。壁を出さない代わりにここで説明する。 */
+  if (p.dependentTax === true && age > 0 && age < 16
+      && p.dependentRelationship !== 'spouse') {
+    items.push(`<details class="acc" open><summary>👶 16歳未満なので扶養控除の壁はありません</summary>
+      <div class="acc-body"><div class="note">
+        ${year}年12月31日時点で<b>${age}歳</b>のため、年少扶養親族にあたります。
+        年少扶養親族には<b>扶養控除そのものがありません</b>（児童手当に振り替えられています）。
+        いくら稼いでも扶養控除が消えるという心配は不要です。<br>
+        ただし<b>住民税の非課税限度額の計算では扶養親族として数えられる</b>ため、
+        収入が増えると扶養している方の住民税の非課税ラインに影響することはあります。
+        また、社会保険の扶養（健康保険）は年齢に関係なく収入で判定されます。
+      </div></div></details>`);
+  }
+
+  /* 本人の事情による控除。該当する人にだけ、何がどう効いているかを出す。 */
+  const pk = personalKojo();
+  if (pk.names.length) {
+    const h135 = juuminzeiHikazei135(year);
+    items.push(`<details class="acc"><summary>♿ ${esc(pk.names.join('・'))}が効いています</summary>
+      <div class="acc-body"><div class="note">
+        所得税は<b>${man(pk.shotokuzei)}</b>、住民税の所得割は<b>${man(pk.juuminzei)}</b>の控除が加わります。
+        所得税の壁はその分うしろにずれています。<br>
+        ${h135
+          ? `さらに<b>合計所得${man(JUUMIN_HIKAZEI_135)}（給与収入${man(JUUMIN_HIKAZEI_135 + taxYearData(year).kyuyoKojoMin)}）までは住民税が全額非課税</b>です`
+            + `（${h135.reasons.join('・')}）。均等割の非課税限度額より後ろにあるので、住民税の壁もそちらで表示しています。`
+          : ''}<br>
+        これらの控除は自動では付きません。勤務先に出す「扶養控除等（異動）申告書」で申告するか、
+        確定申告が必要です。障害者手帳の等級と税法上の区分（一般／特別）は一致しないことがあるので、
+        判断に迷う場合はお住まいの市区町村か税務署にご確認ください。
+      </div></div></details>`);
+  }
 
   items.push(`<details class="acc"><summary>💴 家族手当・扶養手当（勤務先の制度）</summary>
     <div class="acc-body"><div class="note">
@@ -3598,10 +3834,18 @@ function renderOtherNotes() {
       扶養を外れると、自分で<b>国民健康保険</b>（または勤務先の社会保険）に入ります。
       国民健康保険料は前年の所得をもとに市区町村ごとに計算されるため、超えた年はそれほど高くならないことが多い一方、
       翌年に上がります。金額は自治体差が大きいので、お住まいの市区町村のページでご確認ください。<br>
-      <b>国民年金</b>は130万円の壁とは別の話です。20歳以上は納付義務があり、令和8年度は月額
+      <b>国民年金</b>は130万円の壁とは別の話です。令和8年度は月額
       ${yen(SI.nenkinMonthly)}（年 ${yen(SI.nenkinMonthly * 12)}）。
+      ${age > 0 && age < 20
+        ? `<b>納付義務は20歳からなので、いまはまだ関係ありません</b>（${year}年12月31日時点で${age}歳）。`
+        : '20歳以上は納付義務があります。'}
       ${p.isStudent === true
         ? '在学中なら<b>学生納付特例</b>で猶予できます（免除ではなく先送りで、追納は任意）。前年所得の基準は128万円＋扶養親族の数×38万円などが目安です。'
+          + (p.usesGakuseiTokurei === true
+              ? '設定では<b>利用中</b>になっているので、在学中の保険料は実質0円として計算しています。'
+              : p.usesGakuseiTokurei === false
+                ? '設定では<b>未利用</b>になっています。申請は在学中ならいつでもでき、さかのぼれる期間もあります。'
+                : '設定タブで「学生納付特例を利用中」を選ぶと、扶養を外れた時の試算に反映されます。')
         : '所得が低い場合は免除・猶予の制度があります。'}
     </div></div></details>`);
 
@@ -3611,7 +3855,11 @@ function renderOtherNotes() {
       ・住民税の非課税限度額は<b>扶養親族がいない単身者</b>の金額です。扶養している家族がいる場合は上がります。<br>
       ・${STATE.activeYear}年分の${taxYearData(STATE.activeYear).era}として計算しています。
       178万円などの金額は<b>令和8年分・令和9年分限りの時限措置</b>で、令和10年分以降は物価に応じて再設定される見込みです。<br>
-      ・障害者控除・ひとり親控除・寡婦控除など、該当すると非課税ラインが上がる控除には対応していません。
+      ・障害者控除・ひとり親控除・寡婦控除は設定タブで選べます。選ぶと所得税の壁と住民税の判定に反映されます。<br>
+      ・年齢は<b>生まれた年</b>から「その年の12月31日時点」で計算しています。扶養控除・特定親族特別控除・
+      老人扶養控除はこの時点の年齢で決まるためです。社会保険の年齢判定は認定時点なので、
+      誕生日の前後は1歳ずれることがあります。<br>
+      ・扶養している方の所得が高い場合（配偶者控除は合計所得1,000万円超で対象外など）の制限は見ていません。
     </div></div></details>`);
 
   $('other-notes').innerHTML = items.join('');
@@ -3619,7 +3867,10 @@ function renderOtherNotes() {
 
 function renderSettings() {
   const p = STATE.settings.profile;
-  $('s-age').value = p.age ?? '';
+  $('s-birth').value = p.birthYear ?? '';
+  $('s-disability').value = p.disability || '';
+  $('s-single').value = p.single || '';
+  $('s-age-echo').innerHTML = ageEchoHTML(p.birthYear);
   $('s-student').value = selVal(p.isStudent);
   $('s-tokurei').value = selVal(p.usesGakuseiTokurei);
   $('s-dep-tax').value = selVal(p.dependentTax);
@@ -4169,7 +4420,9 @@ $('overage-list').addEventListener('change', async (e) => {
 
 /* --- プロフィール --- */
 const PROFILE_BINDINGS = [
-  ['s-age', 'age', (v) => (v === '' ? null : Number(v))],
+  ['s-birth', 'birthYear', (v) => (v === '' ? null : Number(v))],
+  ['s-disability', 'disability', String],
+  ['s-single', 'single', String],
   ['s-student', 'isStudent', triState],
   ['s-tokurei', 'usesGakuseiTokurei', triState],
   ['s-dep-tax', 'dependentTax', triState],
@@ -4799,6 +5052,7 @@ function renderSetup() {
   $('su-wrap-tokurei').hidden = $('su-student').value !== 'true';
   $('su-wrap-kinro').hidden = $('su-student').value !== 'true';
   $('su-wrap-rel').hidden = $('su-dep-tax').value !== 'true';
+  $('su-age-echo').innerHTML = ageEchoHTML($('su-birth').value);
 }
 
 /* 現在のステップの入力を STATE に書き込む。戻る/進むのどちらでも呼ぶので、
@@ -4821,8 +5075,10 @@ function commitSetupStep(step) {
     job.commuteTaxExempt = $('su-exempt').value === 'true';
   } else if (step === 3) {
     const p = STATE.settings.profile;
-    const age = $('su-age').value;
-    p.age                       = age === '' ? null : Number(age);
+    const by = $('su-birth').value;
+    p.birthYear                 = by === '' ? null : Number(by);
+    p.disability                = $('su-disability').value;
+    p.single                    = $('su-single').value;
     p.isStudent                 = triState($('su-student').value);
     p.usesGakuseiTokurei        = triState($('su-tokurei').value);
     p.dependentTax              = triState($('su-dep-tax').value);
@@ -4848,7 +5104,10 @@ function fillSetupForm() {
   $('su-pass').value       = job.passFare || 0;
   $('su-pass-th').value    = job.passThreshold || 0;
   $('su-exempt').value     = String(job.commuteTaxExempt !== false);
-  $('su-age').value        = p.age ?? '';
+  $('su-birth').value      = p.birthYear ?? '';
+  $('su-disability').value = p.disability || '';
+  $('su-single').value     = p.single || '';
+  $('su-age-echo').innerHTML = ageEchoHTML(p.birthYear);
   $('su-student').value    = selVal(p.isStudent);
   $('su-tokurei').value    = selVal(p.usesGakuseiTokurei);
   $('su-dep-tax').value    = selVal(p.dependentTax);
@@ -4890,6 +5149,13 @@ $('su-back').addEventListener('click', () => {
 $('su-skip').addEventListener('click', () => finishSetup(true));
 $('su-student').addEventListener('change', renderSetup);
 $('su-dep-tax').addEventListener('change', renderSetup);
+/* 生年は打っている最中に「何歳になるか」を出す。移行で1年ずれた人が気づける。 */
+$('su-birth').addEventListener('input', () => {
+  $('su-age-echo').innerHTML = ageEchoHTML($('su-birth').value);
+});
+$('s-birth').addEventListener('input', () => {
+  $('s-age-echo').innerHTML = ageEchoHTML($('s-birth').value);
+});
 
 $('btn-rerun-setup').addEventListener('click', async () => {
   STATE.settings.setupDone = false;
@@ -5017,6 +5283,13 @@ function migrate() {
   const p = s.profile = s.profile || {};
   Object.entries(DEFAULT_PROFILE).forEach(([k, v]) => { if (p[k] === undefined) p[k] = v; });
   if (p.dependentRelationship === 'student_child') p.dependentRelationship = 'other';
+  /* 年齢だけを持っていた頃のデータを生年に移す。誕生日までは分からないので、
+     今年まだ誕生日が来ていない人は1年ずれる。設定画面に
+     「○年12月31日時点で○歳」と出しているので、そこで気づける。 */
+  if (p.birthYear == null && Number(p.age) > 0) {
+    p.birthYear = new Date().getFullYear() - Number(p.age);
+  }
+  delete p.age;
 
   STATE.jobs.forEach((job) => {
     Object.entries(JOB_DEFAULTS).forEach(([k, v]) => {
