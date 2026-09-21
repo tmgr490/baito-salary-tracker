@@ -1195,11 +1195,29 @@ body.setup-mode .toast{ bottom:20px; }
           <option value="spouse">配偶者(夫・妻)</option>
         </select>
       </div>
+      <div class="field" id="wrap-supincome"><label for="s-sup-income">扶養している方の合計所得</label>
+        <select id="s-sup-income">
+          <option value="">選択してください（未選択は900万円以下で計算）</option>
+          <option value="u900">900万円以下</option>
+          <option value="u950">900万円超 950万円以下</option>
+          <option value="u1000">950万円超 1,000万円以下</option>
+          <option value="o1000">1,000万円超</option>
+        </select>
+      </div>
+      <div class="field" id="wrap-coresident"><label for="s-coresident">扶養している方と同居している</label>
+        <select id="s-coresident">
+          <option value="">選択してください</option>
+          <option value="yes">はい（相手やその配偶者の父母・祖父母として同居）</option>
+          <option value="no">いいえ</option>
+        </select>
+      </div>
       <div class="field" id="wrap-rate"><label for="s-rate">扶養している方の所得税率</label>
         <select id="s-rate">
+          <!-- value は String(Number) と一致させる。"0.10" にすると
+               String(0.1) === "0.1" と食い違って選択が外れる -->
           <option value="0.05">5%（課税所得195万円以下）</option>
-          <option value="0.10">10%（〜330万円）</option>
-          <option value="0.20">20%（〜695万円）</option>
+          <option value="0.1">10%（〜330万円）</option>
+          <option value="0.2">20%（〜695万円）</option>
           <option value="0.23">23%（〜900万円）</option>
           <option value="0.33">33%（〜1,800万円）</option>
         </select>
@@ -1225,6 +1243,37 @@ body.setup-mode .toast{ bottom:20px; }
         </select>
       </div>
     </div>
+    <details class="acc" style="margin-top:12px;">
+      <summary>♿ 障害者控除は「一般」と「特別」のどちら？</summary>
+      <div class="acc-body"><div class="note">
+        手帳の等級と税法上の区分は名前が違うだけで、対応は決まっています。
+        <div class="hr"></div>
+        <b>特別障害者</b>（所得税40万円／住民税30万円）<br>
+        ・身体障害者手帳 <b>1級・2級</b><br>
+        ・精神障害者保健福祉手帳 <b>1級</b><br>
+        ・療育手帳（愛の手帳など）<b>A・1度・2度などの重度</b><br>
+        ・戦傷病者手帳 特別項症〜第3項症／原爆症の認定を受けている方<br>
+        ・成年被後見人<br>
+        ・常に就床を要し、複雑な介護を要する方<br>
+        ・65歳以上で市区町村長から特別障害者に準ずると認定された方
+        <div class="hr"></div>
+        <b>一般の障害者</b>（所得税27万円／住民税26万円）<br>
+        ・身体障害者手帳 <b>3〜6級</b><br>
+        ・精神障害者保健福祉手帳 <b>2級・3級</b><br>
+        ・療育手帳 <b>B・3度以下などの中軽度</b><br>
+        ・戦傷病者手帳 第4項症〜第6項症<br>
+        ・65歳以上で市区町村長から障害者に準ずると認定された方
+        <div class="hr"></div>
+        <b>同居特別障害者</b>（所得税75万円／住民税53万円）は、特別障害者で、
+        かつ扶養している方やその配偶者・生計を一にする親族と<b>同居している</b>場合です。<br>
+        判断に迷うとき、手帳が無くても65歳以上で要介護認定を受けているときは、
+        お住まいの市区町村の窓口で「障害者控除対象者認定書」について聞いてみてください。
+        <div class="meter-src" style="margin-top:8px;">
+          <a href="https://www.nta.go.jp/publication/pamph/koho/kurashi/html/03_2.htm"
+             target="_blank" rel="noopener" style="color:var(--brand); font-weight:700;">国税庁「障害者と税」 ↗</a></div>
+      </div></div>
+    </details>
+
     <div class="note" style="margin-top:12px;">
       「学生かどうか」と「年齢」は別々に扱っています。特定親族特別控除や社会保険の150万円ラインは
       <b>19〜22歳という年齢だけ</b>で決まり、在学中かどうかは関係ありません。逆に学生納付特例や
@@ -1622,10 +1671,36 @@ const JUUMIN_CHOSEI = 2500;   // 調整控除(課税所得200万円以下の一�
 /* 住民税側の人的控除額（所得税との差額計算用） */
 /* 扶養している側が受けられる控除の額。壁を超えた時に相手の税額が
    いくら増えるかの概算に使う。老人＝その年の12月31日時点で70歳以上。 */
-const JUUMIN_KOJO  = { fuyou: 330000, fuyouRoujin: 380000, tokutei: 450000,
-                       haigusha: 330000, haigushaRoujin: 380000 };
-const SHOTOKU_KOJO = { fuyou: 380000, fuyouRoujin: 480000, tokutei: 630000,
-                       haigusha: 380000, haigushaRoujin: 480000 };
+const JUUMIN_KOJO  = { fuyou: 330000, fuyouRoujin: 380000, fuyouDoukyoRoujin: 450000,
+                       tokutei: 450000, haigusha: 330000 };
+const SHOTOKU_KOJO = { fuyou: 380000, fuyouRoujin: 480000, fuyouDoukyoRoujin: 580000,
+                       tokutei: 630000, haigusha: 380000 };
+
+/* 配偶者控除・配偶者特別控除は「控除を受ける側（扶養している方）」の合計所得で
+   3段階に減り、1,000万円を超えると使えなくなる。扶養控除や特定親族特別控除には
+   この制限が無いので、配偶者のときだけ効く。
+   roujin は老人控除対象配偶者（12/31時点で70歳以上）で、配偶者控除のみ上乗せ。
+   配偶者特別控除には老人の上乗せが無いため tokubetsu は共通。 */
+const HAIGUSHA_BANDS = {
+  u900:  { label: '900万円以下',
+           kojo:      { shotokuzei: 380000, juuminzei: 330000 },
+           roujin:    { shotokuzei: 480000, juuminzei: 380000 },
+           tokubetsu: { shotokuzei: 380000, juuminzei: 330000 } },
+  u950:  { label: '900万円超 950万円以下',
+           kojo:      { shotokuzei: 260000, juuminzei: 220000 },
+           roujin:    { shotokuzei: 320000, juuminzei: 260000 },
+           tokubetsu: { shotokuzei: 260000, juuminzei: 220000 } },
+  u1000: { label: '950万円超 1,000万円以下',
+           kojo:      { shotokuzei: 130000, juuminzei: 110000 },
+           roujin:    { shotokuzei: 160000, juuminzei: 130000 },
+           tokubetsu: { shotokuzei: 130000, juuminzei: 110000 } },
+  o1000: { label: '1,000万円超',
+           kojo:      { shotokuzei: 0, juuminzei: 0 },
+           roujin:    { shotokuzei: 0, juuminzei: 0 },
+           tokubetsu: { shotokuzei: 0, juuminzei: 0 } }
+};
+const haigushaBand = () =>
+  HAIGUSHA_BANDS[STATE.settings.profile.supporterIncome] || HAIGUSHA_BANDS.u900;
 
 /* 本人の事情による控除。所得税と住民税で額が違う。 */
 const SHOGAISHA_KOJO = {
@@ -1720,7 +1795,11 @@ const DEFAULT_PROFILE = {
   kyuchi: null,              // 住民税の均等割の非課税限度額に効く生活保護の級地区分
   usesKinroGakusei: null,    // 勤労学生控除を申告しているか（学生のときだけ意味がある）
   disability: '',            // '' 未選択 / 'none' / 'normal' / 'special' / 'special_live'
-  single: ''                 // '' 未選択 / 'none' / 'hitorioya' / 'kafu'
+  single: '',                // '' 未選択 / 'none' / 'hitorioya' / 'kafu'
+  /* 扶養している方の合計所得。配偶者控除・配偶者特別控除だけに効く */
+  supporterIncome: '',       // '' 未選択 / 'u900' / 'u950' / 'u1000' / 'o1000'
+  /* 70歳以上のとき、扶養している方（またはその配偶者）の直系尊属で同居しているか */
+  coResident: ''             // '' 未選択 / 'yes' / 'no'
 };
 
 let STATE = {
@@ -2425,6 +2504,19 @@ function wallConfidence(agg) {
       assume: 'いまは扶養に入っていない前提なので、月額の判定を出していません。',
       effect: '扶養に入っているなら、年収だけでなく<b>直近3ヶ月の平均月収</b>でも外れる'
             + 'ことがあります。ここが一番見落としやすいところです。' },
+    { name: '扶養している方の合計所得', weight: 10,
+      filled: !!HAIGUSHA_BANDS[p.supporterIncome],
+      relevant: p.dependentTax === true && p.dependentRelationship === 'spouse',
+      assume: 'いまは900万円以下として、配偶者控除を満額で見ています。',
+      effect: '900万円を超えると控除額が3段階で減り、1,000万円を超えると'
+            + '配偶者控除も配偶者特別控除も使えなくなります（壁そのものが無くなります）。' },
+    { name: '扶養している方と同居しているか', weight: 8,
+      filled: p.coResident === 'yes' || p.coResident === 'no',
+      relevant: p.dependentTax === true && p.dependentRelationship !== 'spouse'
+                && ageInYear(STATE.activeYear) >= 70,
+      assume: 'いまは同居していない前提（老人扶養控除48万円）で出しています。',
+      effect: '相手やその配偶者の父母・祖父母として同居していれば同居老親等となり、'
+            + '控除額が58万円（住民税45万円）に増えます。' },
     { name: '扶養している方との続柄', weight: 12,
       filled: p.dependentRelationship === 'spouse' || p.dependentRelationship === 'other',
       relevant: dependent,
@@ -2561,20 +2653,29 @@ function generateWalls(year) {
     });
   }
 
+  const hband = haigushaBand();
   if (p.dependentTax) {
-    if (rel === 'spouse') {
+    if (rel === 'spouse' && p.supporterIncome === 'o1000') {
+      /* 扶養している方の合計所得が1,000万円を超えていると配偶者控除も
+         配偶者特別控除も使えない。失うものが無いので壁を出さない。 */
+    } else if (rel === 'spouse') {
       walls.push({
         key: 'haigusha', name: '配偶者控除・配偶者特別控除', amount: T.haigushaFull, basis: 'wage',
         note: (roujin
-                ? `${man(T.fuyou)}までは<b>老人控除対象配偶者</b>として配偶者控除48万円（12/31時点で70歳以上）。`
-                  + `これを超えると配偶者特別控除38万円に下がり、${man(T.haigushaFull)}までその38万円が維持されます。`
-                  + `<b>${man(T.fuyou)}のところに48万→38万の段差があります。</b>`
-                : `${man(T.fuyou)}までは配偶者控除で満額38万円。超えても${man(T.haigushaFull)}までは配偶者特別控除で満額38万円が維持され、`)
+                ? `${man(T.fuyou)}までは<b>老人控除対象配偶者</b>として配偶者控除${man(hband.roujin.shotokuzei)}（12/31時点で70歳以上）。`
+                  + `これを超えると配偶者特別控除${man(hband.tokubetsu.shotokuzei)}に下がり、${man(T.haigushaFull)}までその額が維持されます。`
+                  + `<b>${man(T.fuyou)}のところに${man(hband.roujin.shotokuzei)}→${man(hband.tokubetsu.shotokuzei)}の段差があります。</b>`
+                : `${man(T.fuyou)}までは配偶者控除で満額${man(hband.kojo.shotokuzei)}。超えても${man(T.haigushaFull)}までは配偶者特別控除で満額${man(hband.tokubetsu.shotokuzei)}が維持され、`)
             + `そこから${man(T.haigushaZero)}に向けて段階的に減っていきます（${man(T.haigushaZero)}超でゼロ）。`
             + 'バーの基準は「満額が維持される上限」です。'
-            + '<br><b>配偶者控除・配偶者特別控除は、控除を受ける側の合計所得が1,000万円を超えると使えません</b>'
-            + '（900万円を超えると段階的に減ります）。このアプリは相手の所得までは見ていないので、'
-            + '該当しそうな場合はご注意ください。',
+            + (p.supporterIncome
+                ? `<br>扶養している方の合計所得を<b>${hband.label}</b>として計算しています。`
+                  + (p.supporterIncome === 'u900'
+                      ? '900万円を超えると控除額が段階的に減り、1,000万円を超えると使えなくなります。'
+                      : '合計所得900万円以下なら満額38万円（老人控除対象配偶者なら48万円）です。')
+                : '<br><b>控除を受ける側の合計所得が1,000万円を超えると、配偶者控除も配偶者特別控除も使えません</b>'
+                  + '（900万円を超えると段階的に減ります）。いまは900万円以下として計算しているので、'
+                  + '設定タブの「扶養している方の合計所得」を選ぶと正確になります。'),
         src: '国税庁 No.1195 配偶者特別控除',
         url: 'https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1195.htm'
       });
@@ -2591,13 +2692,22 @@ function generateWalls(year) {
         url: 'https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/1177.htm'
       });
     } else {
+      const doukyo = roujin && p.coResident === 'yes';
+      const fuyouName = doukyo ? '同居老親等の扶養控除' : roujin ? '老人扶養控除' : '扶養控除';
+      const fuyouGaku = doukyo ? SHOTOKU_KOJO.fuyouDoukyoRoujin
+                      : roujin ? SHOTOKU_KOJO.fuyouRoujin : SHOTOKU_KOJO.fuyou;
       walls.push({
-        key: 'fuyoukojo', name: roujin ? '老人扶養控除' : '扶養控除', amount: T.fuyou, basis: 'wage',
-        note: `1円でも超えると${roujin ? '老人扶養控除（48万円）' : '扶養控除（38万円）'}`
+        key: 'fuyoukojo', name: fuyouName, amount: T.fuyou, basis: 'wage',
+        note: `1円でも超えると${fuyouName}（${man(fuyouGaku)}）`
             + `が丸ごと無くなる「崖」です。19〜22歳のような段階的な緩和措置はありません。`
             + (roujin
-                ? `<br>12/31時点で70歳以上のため老人扶養控除（48万円）で計算しています。`
-                  + `扶養している方と<b>同居</b>している直系尊属なら同居老親等となり58万円です。`
+                ? `<br>12/31時点で70歳以上のため` + (doukyo
+                    ? `<b>同居老親等</b>として${man(SHOTOKU_KOJO.fuyouDoukyoRoujin)}（住民税${man(JUUMIN_KOJO.fuyouDoukyoRoujin)}）で計算しています。`
+                    : `老人扶養控除${man(SHOTOKU_KOJO.fuyouRoujin)}（住民税${man(JUUMIN_KOJO.fuyouRoujin)}）で計算しています。`
+                      + (p.coResident === ''
+                          ? `扶養している方（またはその配偶者）の父母・祖父母で<b>同居</b>している場合は`
+                            + `同居老親等となり${man(SHOTOKU_KOJO.fuyouDoukyoRoujin)}です。設定タブで選べます。`
+                          : ''))
                 : '')
             + `（扶養親族の合計所得金額要件${man(T.fuyou - T.kyuyoKojoMin)}＋給与所得控除${man(T.kyuyoKojoMin)}）`,
         src: '国税庁 No.1180 扶養控除',
@@ -2719,8 +2829,11 @@ function wallImpact(wall, excess, agg, year) {
     case 'fuyoukojo': {
       /* 12/31時点で70歳以上なら老人扶養控除（48万/38万）になる */
       const roujin = ageInYear(year) >= 70;
-      const sk = roujin ? SHOTOKU_KOJO.fuyouRoujin : SHOTOKU_KOJO.fuyou;
-      const jk = roujin ? JUUMIN_KOJO.fuyouRoujin : JUUMIN_KOJO.fuyou;
+      const doukyo = roujin && p.coResident === 'yes';
+      const sk = doukyo ? SHOTOKU_KOJO.fuyouDoukyoRoujin
+               : roujin ? SHOTOKU_KOJO.fuyouRoujin : SHOTOKU_KOJO.fuyou;
+      const jk = doukyo ? JUUMIN_KOJO.fuyouDoukyoRoujin
+               : roujin ? JUUMIN_KOJO.fuyouRoujin : JUUMIN_KOJO.fuyou;
       return { amount: sk * rate * FUKKO + jk * JUUMIN_RATE,
                who: '扶養している方', cliff: true, exact: false };
     }
@@ -2730,8 +2843,11 @@ function wallImpact(wall, excess, agg, year) {
                who: '扶養している方', gradual: true, ratio: r, exact: false };
     }
     case 'haigusha': {
+      /* 配偶者特別控除の額は、扶養している方の合計所得で3段階に減る。
+         老人の上乗せは配偶者控除にしか無いので、ここでは使わない。 */
+      const band = haigushaBand().tokubetsu;
       const r = ratio(T.haigushaFull, T.haigushaZero);
-      return { amount: r * (SHOTOKU_KOJO.haigusha * rate * FUKKO + JUUMIN_KOJO.haigusha * JUUMIN_RATE),
+      return { amount: r * (band.shotokuzei * rate * FUKKO + band.juuminzei * JUUMIN_RATE),
                who: '配偶者', gradual: true, ratio: r, exact: false };
     }
     case 'shotokuzei':
@@ -3793,6 +3909,21 @@ function renderOtherNotes() {
       </div></div></details>`);
   }
 
+  /* 扶養している方の合計所得が1,000万円を超えていると配偶者控除は使えない。
+     壁を出さない代わりに、なぜ無いのかをここで説明する。 */
+  if (p.dependentTax === true && p.dependentRelationship === 'spouse'
+      && p.supporterIncome === 'o1000') {
+    items.push(`<details class="acc" open><summary>💼 配偶者控除の壁はありません</summary>
+      <div class="acc-body"><div class="note">
+        扶養している方の合計所得を<b>1,000万円超</b>と設定しているため、
+        <b>配偶者控除も配偶者特別控除も適用できません</b>。
+        あなたの収入がいくらでも相手の控除が減ることはないので、この壁は表示していません。<br>
+        ただし<b>社会保険の扶養（130万円）と自分にかかる税金は別</b>です。そちらは相手の所得に
+        関係なく効くので、上の壁で確認してください。<br>
+        相手の合計所得が1,000万円以下になる年は、設定タブで変更すると配偶者控除の壁が戻ります。
+      </div></div></details>`);
+  }
+
   /* 本人の事情による控除。該当する人にだけ、何がどう効いているかを出す。 */
   const pk = personalKojo();
   if (pk.names.length) {
@@ -3859,7 +3990,8 @@ function renderOtherNotes() {
       ・年齢は<b>生まれた年</b>から「その年の12月31日時点」で計算しています。扶養控除・特定親族特別控除・
       老人扶養控除はこの時点の年齢で決まるためです。社会保険の年齢判定は認定時点なので、
       誕生日の前後は1歳ずれることがあります。<br>
-      ・扶養している方の所得が高い場合（配偶者控除は合計所得1,000万円超で対象外など）の制限は見ていません。
+      ・配偶者控除・配偶者特別控除は、扶養している方の合計所得（900万／950万／1,000万の区分）に
+      応じて控除額を変えています。扶養控除・特定親族特別控除にはこの制限がありません。
     </div></div></details>`);
 
   $('other-notes').innerHTML = items.join('');
@@ -3870,18 +4002,28 @@ function renderSettings() {
   $('s-birth').value = p.birthYear ?? '';
   $('s-disability').value = p.disability || '';
   $('s-single').value = p.single || '';
+  $('s-sup-income').value = p.supporterIncome || '';
+  $('s-coresident').value = p.coResident || '';
   $('s-age-echo').innerHTML = ageEchoHTML(p.birthYear);
   $('s-student').value = selVal(p.isStudent);
   $('s-tokurei').value = selVal(p.usesGakuseiTokurei);
   $('s-dep-tax').value = selVal(p.dependentTax);
   $('s-rel').value = p.dependentRelationship || '';
-  $('s-rate').value = String(p.supporterTaxRate ?? 0.10);
+  $('s-rate').value = String(Number(p.supporterTaxRate ?? 0.10));
   $('s-dep-shaho').value = selVal(p.dependentSocialInsurance);
   $('s-kinro').value = selVal(p.usesKinroGakusei);
   $('s-kyuchi').value = p.kyuchi == null ? '' : String(p.kyuchi);
   $('wrap-kinro').style.display = p.isStudent === true ? '' : 'none';
   $('wrap-tokurei').style.display = p.isStudent === true ? '' : 'none';
   $('wrap-rel').style.display = p.dependentTax === true ? '' : 'none';
+  $('wrap-rate').style.display = p.dependentTax === true ? '' : 'none';
+  /* 配偶者控除だけが相手の所得で減る。扶養控除・特定親族特別控除には制限が無い */
+  $('wrap-supincome').style.display =
+    (p.dependentTax === true && p.dependentRelationship === 'spouse') ? '' : 'none';
+  /* 同居老親等は70歳以上の配偶者以外の親族だけ */
+  $('wrap-coresident').style.display =
+    (p.dependentTax === true && p.dependentRelationship !== 'spouse'
+     && ageInYear(STATE.activeYear) >= 70) ? '' : 'none';
   $('wrap-rate').style.display = p.dependentTax === true ? '' : 'none';
 
   renderJobs();
@@ -4423,6 +4565,8 @@ const PROFILE_BINDINGS = [
   ['s-birth', 'birthYear', (v) => (v === '' ? null : Number(v))],
   ['s-disability', 'disability', String],
   ['s-single', 'single', String],
+  ['s-sup-income', 'supporterIncome', String],
+  ['s-coresident', 'coResident', String],
   ['s-student', 'isStudent', triState],
   ['s-tokurei', 'usesGakuseiTokurei', triState],
   ['s-dep-tax', 'dependentTax', triState],
