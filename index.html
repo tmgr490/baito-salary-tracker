@@ -194,6 +194,9 @@ body{
 
 /* ---------------- layout ---------------- */
 .wrap{ max-width: 980px; margin:0 auto; padding: 14px 16px 0; }
+/* hidden 属性はブラウザ既定の display:none で効くが、.field{display:flex} のような
+   クラス指定に負けてしまう。隠したつもりの欄が出たままになるので明示的に止める。 */
+[hidden]{ display:none !important; }
 .page[hidden]{ display:none; }
 
 .card{
@@ -347,6 +350,7 @@ td .wd{ color:var(--ink-3); font-weight:600; }
 }
 .badge.hol{ background:color-mix(in srgb, var(--st-crit) 14%, transparent); color:var(--st-crit-ink); }
 .badge.ovn{ background:color-mix(in srgb, var(--st-warn) 20%, transparent); color:var(--st-warn-ink); }
+.badge.leave{ background:color-mix(in srgb, var(--cal-sat) 18%, transparent); color:var(--cal-sat); }
 .x-btn{
   appearance:none; border:0; background:transparent; cursor:pointer;
   color:var(--ink-3); font-size:18px; line-height:1; border-radius:8px;
@@ -511,6 +515,7 @@ details.conf-acc > .acc-body{ padding:0 11px 11px; }
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 .cal-chip.ovn{ background:color-mix(in srgb, var(--st-warn) 22%, transparent); color:var(--st-warn-ink); }
+.cal-chip.leave{ background:color-mix(in srgb, var(--cal-sat) 20%, transparent); color:var(--cal-sat); }
 .cal-more{ font-size:9px; font-weight:700; color:var(--ink-3); text-align:center; }
 .cal-sum{
   margin-top:10px; padding:9px 11px; border-radius:var(--r-sm);
@@ -943,29 +948,38 @@ body.setup-mode .toast{ bottom:20px; }
 <section class="page" id="page-entry" role="tabpanel" hidden>
   <div class="card">
     <div class="card-head">
-      <h2>シフトを追加</h2>
+      <h2 id="entry-title">シフトを追加</h2>
       <span class="spacer"></span>
       <span class="chip" id="entry-job-chip">-</span>
     </div>
     <div class="quick" id="quick-shifts"></div>
     <div class="grid">
+      <div class="field"><label for="in-kind">種類</label>
+        <select id="in-kind">
+          <option value="work">勤務</option>
+          <option value="leave">有給休暇</option>
+        </select></div>
       <div class="field"><label for="in-date">勤務日</label><input type="date" id="in-date"></div>
-      <div class="field"><label for="in-start-h">開始</label>
+      <div class="field" id="wrap-leave-hours" hidden><label for="in-leave-hours">有給の時間数</label>
+        <input type="number" id="in-leave-hours" min="0" max="24" step="0.5" inputmode="decimal"></div>
+      <div class="field" id="wrap-leave-start" hidden><label for="in-leave-start">どの時間帯の時給で</label>
+        <select id="in-leave-start" aria-label="有給の時給を取る時刻"></select></div>
+      <div class="field" id="wrap-start"><label for="in-start-h">開始</label>
         <div class="time-row">
           <select id="in-start-h" aria-label="開始時"></select><span class="sep">:</span><select id="in-start-m" aria-label="開始分"></select>
         </div>
       </div>
-      <div class="field"><label for="in-end-h">終了</label>
+      <div class="field" id="wrap-end"><label for="in-end-h">終了</label>
         <div class="time-row">
           <select id="in-end-h" aria-label="終了時"></select><span class="sep">:</span><select id="in-end-m" aria-label="終了分"></select>
         </div>
       </div>
-      <div class="field"><label for="in-break">休憩(分)</label><input type="number" id="in-break" value="0" min="0" step="5"></div>
-      <div class="field"><label for="in-break-start">休憩開始(任意)</label>
+      <div class="field" id="wrap-break"><label for="in-break">休憩(分)</label><input type="number" id="in-break" value="0" min="0" step="5"></div>
+      <div class="field" id="wrap-break-start"><label for="in-break-start">休憩開始(任意)</label>
         <select id="in-break-start" aria-label="休憩開始時刻"></select>
       </div>
     </div>
-    <div class="note tight" style="margin:8px 0 12px;">
+    <div class="note tight" id="entry-hint" style="margin:8px 0 12px;">
       休憩開始を指定すると、その時間帯をピンポイントで無給として差し引きます。未指定の場合は実働時間の平均時給で按分して差し引きます。
     </div>
     <div class="banner info" id="entry-preview" style="margin-bottom:12px;"><span class="bi">🧮</span><div id="entry-preview-body">日付と時刻を入力すると見込み日給を表示します。</div></div>
@@ -1768,7 +1782,13 @@ const JOB_DEFAULTS = {
      アプリが持つシフトの実績とは別物なので、本人に入れてもらう。 */
   contractWeeklyHours: 0,    // 契約上の週の所定労働時間。0なら未入力
   employerSize: 0,           // 勤務先の従業員数（おおよそ）。0なら不明
-  fullTimeWeeklyHours: 0     // その職場の正社員の週所定労働時間。0なら週40時間とみなす
+  fullTimeWeeklyHours: 0,    // その職場の正社員の週所定労働時間。0なら週40時間とみなす
+  /* 有給休暇。賃金の出し方は労基法39条で3通り認められていて職場ごとに違う。
+     就業規則か雇用契約書に書いてあるので、それに合わせてもらう。 */
+  paidLeaveHours: 0,         // 1日あたりの標準時間。0なら未設定（入力のたびに指定）
+  paidLeaveBasis: 'base',    // 'base' 基本時給 / 'band' 時間帯別時給 / 'average' 平均賃金 / 'fixed' 固定額
+  paidLeaveFixed: 0,         // 'fixed' のときの1日あたりの額
+  paidLeaveCommute: false    // 有給の日にも通勤費が出るか（通常は出ない）
 };
 
 function makeJob(over) {
@@ -2072,10 +2092,101 @@ function segmentRate(seg, shift, job) {
 }
 
 /* 1シフトの給与。pay は丸め前の実数、payRounded は「日ごと」設定での丸め後。 */
+/* --------------------------------------------------------------------------
+   有給休暇
+
+   有給の賃金の出し方は労基法39条で3通り認められていて、どれを使うかは
+   就業規則で決まっている。金額が職場ごとに変わるので、本人に選んでもらう。
+
+   1. 通常の賃金 … 時給制なら 時給 × その日の所定労働時間。いちばん多い
+   2. 平均賃金   … 労基法12条。直前3ヶ月の賃金総額 ÷ 暦日数
+   3. 標準報酬日額 … 労使協定が要るのでここでは「固定額」で代用する
+
+   有給は実際に出勤していないので、通勤費は既定で付けない。
+   -------------------------------------------------------------------------- */
+const isLeave = (s) => !!s && s.kind === 'leave';
+
+/* 指定した日時の時給（時間帯加算・日祝加算込み）。有給を時間帯別で出すときに使う */
+function wageRateAt(job, dateKey, timeStr) {
+  const hour = timeToHours(timeStr || '00:00');
+  return segmentRate({ from: hour }, { date: dateKey }, job).rate;
+}
+
+/* 労基法12条の平均賃金。
+   直前の賃金締切日から遡る3ヶ月の賃金総額 ÷ その期間の暦日数。
+   時給制・日給制には「賃金総額 ÷ 労働日数 × 60%」の最低保障があるので高いほうを採る。
+   （集計に有給そのものは入れない。循環してしまうため。その分わずかに低めに出る） */
+function averageWage(job, dateKey) {
+  const d = parseYMD(dateKey);
+  let cutoff = dayOfMonth(d.getFullYear(), d.getMonth(), job.cutoffDay);
+  if (cutoff >= d) {
+    const pm = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+    cutoff = dayOfMonth(pm.getFullYear(), pm.getMonth(), job.cutoffDay);
+  }
+  const from = new Date(cutoff.getFullYear(), cutoff.getMonth() - 3, cutoff.getDate() + 1);
+  const rows = STATE.shifts.filter((s) => {
+    if (s.jobId !== job.id || isLeave(s)) return false;
+    const sd = parseYMD(s.date);
+    return sd >= from && sd <= cutoff;
+  });
+  if (!rows.length) return null;
+  const total = rows.reduce((a, s) => a + calcShift(s).pay, 0);
+  const days = Math.round((cutoff - from) / 86400000) + 1;
+  const workDays = new Set(rows.map((s) => s.date)).size;
+  const byCalendar = days > 0 ? total / days : 0;
+  const minimum = workDays > 0 ? (total / workDays) * 0.6 : 0;
+  return {
+    amount: Math.max(byCalendar, minimum),
+    total, days, workDays, byCalendar, minimum,
+    usedMinimum: minimum > byCalendar,
+    from: toKey(from), to: toKey(cutoff)
+  };
+}
+
+const LEAVE_BASIS_LABEL = {
+  base:    '基本時給',
+  band:    '時間帯別の時給',
+  average: '平均賃金',
+  fixed:   '固定額'
+};
+
+/* 有給1日分の賃金。hours は週の労働時間の集計にも使うので必ず返す */
+function paidLeaveCalc(shift, job) {
+  const hours = Number(shift.hours) || Number(job.paidLeaveHours) || 0;
+  const basis = job.paidLeaveBasis || 'base';
+
+  if (basis === 'fixed') {
+    return { pay: Number(job.paidLeaveFixed) || 0, hours, rate: null, basis,
+             detail: `1日あたり${yen(Number(job.paidLeaveFixed) || 0)}の固定額` };
+  }
+  if (basis === 'average') {
+    const av = averageWage(job, shift.date);
+    return { pay: av ? av.amount : 0, hours, rate: null, basis, av,
+             detail: av
+               ? `${av.from}〜${av.to}の賃金${yen(Math.round(av.total))}を`
+                 + (av.usedMinimum
+                     ? `労働日数${av.workDays}日で割って60%（最低保障）`
+                     : `暦日数${av.days}日で割った額`)
+               : '直前3ヶ月に勤務の記録がないため計算できません' };
+  }
+  const rate = basis === 'band' && shift.start
+    ? wageRateAt(job, shift.date, shift.start)
+    : (Number(job.baseWage) || 0);
+  return { pay: rate * hours, hours, rate, basis,
+           detail: `${yen(rate)}/時 × ${hours}時間`
+                 + (basis === 'band' && shift.start ? `（${shift.start}〜の時給）` : '') };
+}
+
 function calcShift(shift) {
   const job = getJob(shift.jobId);
   const zero = { pay: 0, payRounded: 0, hours: 0, type: 'weekday', nightHours: 0, otHours: 0 };
   if (!job) return zero;
+
+  if (isLeave(shift)) {
+    const r = paidLeaveCalc(shift, job);
+    return { pay: r.pay, payRounded: roundBy(r.pay, job.roundingMode), hours: r.hours,
+             type: 'leave', nightHours: 0, otHours: 0, leave: r };
+  }
 
   const { segs, brkH, brkExact } = shiftSegments(shift, job);
   if (!segs.length) return zero;
@@ -2140,16 +2251,23 @@ function cycleComputed(key, jobId) {
     .filter((s) => { const d = parseYMD(s.date); return d >= start && d <= end; })
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
-  const workDays = new Set(inCycle.map((s) => s.date)).size;
+  const workDays  = new Set(inCycle.filter((s) => !isLeave(s)).map((s) => s.date)).size;
+  const leaveDays = new Set(inCycle.filter(isLeave).map((s) => s.date)).size;
+  const leaveWage = inCycle.filter(isLeave)
+    .reduce((sum, s) => sum + (job.roundingScope === 'monthly'
+      ? calcShift(s).pay : calcShift(s).payRounded), 0);
   const rawWage = inCycle.reduce((sum, s) => sum + calcShift(s).pay, 0);
   const wage = job.roundingScope === 'monthly'
     ? roundBy(rawWage, job.roundingMode)
     : inCycle.reduce((sum, s) => sum + calcShift(s).payRounded, 0);
 
-  const usePass = job.passThreshold > 0 && workDays >= job.passThreshold;
+  /* 有給の日は実際に通勤していないので、既定では通勤費の日数に数えない */
+  const commuteDays = new Set(
+    inCycle.filter((s) => !isLeave(s) || job.paidLeaveCommute).map((s) => s.date)).size;
+  const usePass = job.passThreshold > 0 && commuteDays >= job.passThreshold;
   const commute = usePass ? (Number(job.passFare) || 0)
-                          : workDays * (Number(job.tripFare) || 0);
-  return { inCycle, workDays, wage, commute, usePass };
+                          : commuteDays * (Number(job.tripFare) || 0);
+  return { inCycle, workDays, leaveDays, leaveWage, commuteDays, wage, commute, usePass };
 }
 
 function cycleEffective(key, jobId) {
@@ -3324,7 +3442,7 @@ function renderEntry() {
 
   /* よく使う時間帯 */
   const counts = {};
-  STATE.shifts.filter((s) => s.jobId === STATE.activeJobId)
+  STATE.shifts.filter((s) => s.jobId === STATE.activeJobId && !isLeave(s))
     .forEach((s) => { const k = s.start + '-' + s.end; counts[k] = (counts[k] || 0) + 1; });
   const frequent = Object.entries(counts).filter(([, c]) => c >= 3)
     .sort((a, b) => b[1] - a[1]).slice(0, 6);
@@ -3333,9 +3451,40 @@ function renderEntry() {
     return `<button type="button" data-qs-start="${s}" data-qs-end="${e}">${s}〜${e} <span style="opacity:.6">${c}回</span></button>`;
   }).join('');
 
+  renderEntryMode();
   renderPreview();
 
   renderShiftList();
+}
+
+/* 勤務と有給で入力項目を入れ替える */
+function renderEntryMode() {
+  const job = getJob(STATE.activeJobId);
+  const leave = $('in-kind').value === 'leave';
+  const basis = (job && job.paidLeaveBasis) || 'base';
+
+  ['wrap-start', 'wrap-end', 'wrap-break', 'wrap-break-start'].forEach((id) => {
+    $(id).hidden = leave;
+  });
+  $('wrap-leave-hours').hidden = !leave;
+  $('wrap-leave-start').hidden = !(leave && basis === 'band');
+  $('quick-shifts').hidden = leave;
+  document.querySelector('label[for="in-date"]').textContent = leave ? '取得日' : '勤務日';
+  $('btn-add-shift').textContent = leave ? '有給を追加' : 'シフトを追加';
+  $('entry-title').textContent = leave ? '有給を追加' : 'シフトを追加';
+
+  if (leave && $('in-leave-hours').value === '') {
+    $('in-leave-hours').value = (job && job.paidLeaveHours) || '';
+  }
+  $('entry-hint').innerHTML = leave
+    ? `賃金は<b>${LEAVE_BASIS_LABEL[basis]}</b>で計算します（設定タブのバイト先ごとに変更できます）。`
+      + (basis === 'average' || basis === 'fixed'
+          ? '時間数は金額には使いませんが、週の労働時間の集計に使うので入れておいてください。'
+          : '')
+      + (job && !job.paidLeaveHours
+          ? '<br>1日あたりの時間を設定タブに入れておくと、毎回自動で入ります。' : '')
+    : '休憩開始を指定すると、その時間帯をピンポイントで無給として差し引きます。'
+      + '未指定の場合は実働時間の平均時給で按分して差し引きます。';
 }
 
 /* --------------------------------------------------------------------------
@@ -3356,6 +3505,11 @@ const compactTime = (t) => {
 /* 表とカレンダーで同じ区分バッジを使う */
 function shiftMarks(s, r) {
   const marks = [];
+  if (isLeave(s)) {
+    marks.push('<span class="badge leave">有給</span>');
+    if (r.leave) marks.push(`<span class="badge">${esc(LEAVE_BASIS_LABEL[r.leave.basis])}</span>`);
+    return marks;
+  }
   if (r.type === 'holiday') marks.push('<span class="badge hol">日祝</span>');
   if (timeToHours(s.end) <= timeToHours(s.start)) marks.push('<span class="badge ovn">日跨ぎ</span>');
   if (r.nightHours > 0) marks.push('<span class="badge">深夜</span>');
@@ -3391,7 +3545,7 @@ function renderShiftTable(list) {
     const marks = shiftMarks(s, r);
     return `<tr>
       <td class="n">${s.date.slice(5)}<span class="wd">(${WD[d.getDay()]})</span></td>
-      <td class="n">${s.start}-${s.end}
+      <td class="n">${isLeave(s) ? '<span class="wd">終日</span>' : `${s.start}-${s.end}`}
         ${marks.length ? `<div class="badges" style="justify-content:flex-end">${marks.join('')}</div>` : ''}</td>
       <td class="n">${r.hours.toFixed(2)}h</td>
       <td class="n"><b>${yen(shiftPay(s))}</b></td>
@@ -3415,7 +3569,7 @@ function renderCalendar(byDate) {
   let html = CAL_ORDER.map((wd) =>
     `<div class="cal-wd${wd === 6 ? ' sat' : wd === 0 ? ' sun' : ''}">${WD[wd]}</div>`).join('');
 
-  const sum = { days: 0, hours: 0, pay: 0 };
+  const sum = { days: 0, leaveDays: 0, hours: 0, pay: 0 };
   for (let i = 0; i < rows * 7; i++) {
     const d = new Date(y, m - 1, 1 - lead + i);
     const key = toKey(d);
@@ -3424,7 +3578,8 @@ function renderCalendar(byDate) {
     const shifts = inMonth ? (byDate[key] || []) : [];
 
     if (shifts.length) {
-      sum.days++;
+      if (shifts.some((x) => !isLeave(x))) sum.days++;
+      if (shifts.some(isLeave)) sum.leaveDays++;
       shifts.forEach((s) => { sum.hours += calcShift(s).hours; sum.pay += shiftPay(s); });
     }
 
@@ -3438,6 +3593,10 @@ function renderCalendar(byDate) {
 
     /* 3本以上はセルからあふれるので、2本＋「他N件」にする */
     const chips = shifts.slice(0, 2).map((s) => {
+      if (isLeave(s)) {
+        const h = calcShift(s).hours;
+        return `<div class="cal-chip leave">有給${h ? h + 'h' : ''}</div>`;
+      }
       const over = timeToHours(s.end) <= timeToHours(s.start);
       return `<div class="cal-chip${over ? ' ovn' : ''}">${
         compactTime(s.start)}-${compactTime(s.end)}</div>`;
@@ -3455,8 +3614,9 @@ function renderCalendar(byDate) {
   $('cal-grid').innerHTML = html;
 
   const job = getJob(STATE.activeJobId);
-  $('cal-sum').innerHTML = sum.days
+  $('cal-sum').innerHTML = (sum.days || sum.leaveDays)
     ? `<span><b>${sum.days}</b>日勤務</span>
+       ${sum.leaveDays ? `<span>有給 <b>${sum.leaveDays}</b>日</span>` : ''}
        <span>実働 <b>${sum.hours.toFixed(1)}</b>h</span>
        <span>日給の合計 <b>${yen(Math.round(sum.pay))}</b></span>
        ${job && job.cutoffDay !== 0
@@ -3490,8 +3650,10 @@ function renderCalDay(byDate) {
           const marks = shiftMarks(s, r);
           return `<div class="cal-row">
             <div style="min-width:0;">
-              <div class="t">${s.start}–${s.end}</div>
-              <div class="m">実働 ${r.hours.toFixed(2)}h</div>
+              <div class="t">${isLeave(s) ? '有給休暇' : `${s.start}–${s.end}`}</div>
+              <div class="m">${isLeave(s)
+                ? `${r.hours}時間分 ・ ${esc(r.leave.detail)}`
+                : `実働 ${r.hours.toFixed(2)}h`}</div>
               ${marks.length ? `<div class="badges">${marks.join('')}</div>` : ''}
             </div>
             <div class="p">${yen(shiftPay(s))}</div>
@@ -3507,11 +3669,31 @@ function renderCalDay(byDate) {
 
 function renderPreview() {
   const date = $('in-date').value;
+  const body0 = $('entry-preview-body');
+
+  if ($('in-kind').value === 'leave') {
+    const job = getJob(STATE.activeJobId);
+    if (!date || !job) { body0.textContent = '取得日を入力すると見込み額を表示します。'; return; }
+    const hours = Number($('in-leave-hours').value) || 0;
+    const shift = { date, jobId: job.id, kind: 'leave', hours };
+    if ((job.paidLeaveBasis || 'base') === 'band') shift.start = $('in-leave-start').value;
+    const r = calcShift(shift);
+    body0.innerHTML = `<b>有給休暇</b> ・ ${r.hours ? `${r.hours}時間分 ・ ` : ''}`
+      + `見込み額 <b class="tnum">${yen(shiftPay(shift))}</b>`
+      + `<br><span style="color:var(--ink-3)">${LEAVE_BASIS_LABEL[r.leave.basis]}: ${r.leave.detail}</span>`
+      + (r.leave.basis === 'average' && r.leave.av && r.leave.av.usedMinimum
+          ? '<br><span style="color:var(--ink-3)">※ 暦日で割った額より最低保障（60%）のほうが高いので、そちらを使っています</span>'
+          : '')
+      + (!r.hours && (job.paidLeaveBasis || 'base') !== 'fixed' && job.paidLeaveBasis !== 'average'
+          ? '<br><span style="color:var(--st-warn-ink)">時間数を入れてください</span>' : '');
+    return;
+  }
+
   const start = $('in-start-h').value + ':' + $('in-start-m').value;
   const end   = $('in-end-h').value + ':' + $('in-end-m').value;
   const brk   = Number($('in-break').value) || 0;
   const bs    = $('in-break-start').value || '';
-  const body  = $('entry-preview-body');
+  const body  = body0;
   if (!date || !STATE.activeJobId) {
     body.textContent = '日付を入力すると見込み日給を表示します。';
     return;
@@ -3552,13 +3734,18 @@ function renderPay() {
   const eff = cycleEffective(key, jobId);
   const corr = (STATE.cycleCorrections[jobId] || {})[key] || {};
 
-  $('cy-days').innerHTML = c.workDays + '<small>日</small>';
+  $('cy-days').innerHTML = c.workDays + '<small>日</small>'
+    + (c.leaveDays ? `<small> ＋有給${c.leaveDays}日</small>` : '');
   $('cy-wage').textContent = yen(eff.wage);
-  $('cy-wage-sub').textContent = eff.wageCorrected ? `訂正済（計算値 ${yen(c.wage)}）` : '計算値';
+  $('cy-wage-sub').textContent = eff.wageCorrected
+    ? `訂正済（計算値 ${yen(c.wage)}）`
+    : (c.leaveDays ? `計算値（うち有給 ${yen(Math.round(c.leaveWage))}）` : '計算値');
   $('cy-commute').textContent = yen(eff.commute);
   $('cy-commute-sub').textContent = eff.commuteCorrected
     ? `訂正済（計算値 ${yen(c.commute)}）`
-    : (c.usePass ? `定期券代（${job.passThreshold}日以上勤務）` : `往復${yen(job.tripFare)}×${c.workDays}日`);
+    : (c.usePass ? `定期券代（${job.passThreshold}日以上勤務）`
+                 : `往復${yen(job.tripFare)}×${c.commuteDays}日`
+                   + (c.leaveDays && !job.paidLeaveCommute ? '（有給の日は除く）' : ''));
   $('cy-total').textContent = yen(eff.wage + eff.commute);
 
   const pd = cyclePayDate(key, job);
@@ -3578,8 +3765,10 @@ function renderPay() {
     const d = parseYMD(s.date);
     return `<tr>
       <td class="n">${s.date.slice(5)}<span class="wd">(${WD[d.getDay()]})</span></td>
-      <td>${r.type === 'holiday' ? '<span class="badge hol">日祝</span>' : '<span class="wd">—</span>'}</td>
-      <td class="n">${s.start}-${s.end}</td>
+      <td>${isLeave(s) ? '<span class="badge leave">有給</span>'
+             : r.type === 'holiday' ? '<span class="badge hol">日祝</span>'
+             : '<span class="wd">—</span>'}</td>
+      <td class="n">${isLeave(s) ? '<span class="wd">終日</span>' : `${s.start}-${s.end}`}</td>
       <td class="n">${r.hours.toFixed(2)}h</td>
       <td class="n">${yen(shiftPay(s))}</td>
     </tr>`;
@@ -3884,6 +4073,10 @@ function renderSocialInsuranceChecks(agg) {
         <div class="hr"></div>
         ここに出しているのは<b>実際に働いた時間</b>です。正式な判定に使われるのは
         契約上の「所定労働時間」なので、最終的な判断は勤務先にご確認ください。
+        <div class="hr"></div>
+        <b>有給休暇の時間も数えています。</b>有給を取った日はもともと出勤する予定だった日
+        （所定労働日）なので、その職場で週に何時間働く人なのかを見るうえでは含めるほうが実態に近いためです。
+        厳密な「実労働時間」ではないので、境目のときは勤務先に確認してください。
       </div></div>
     </details>`;
 }
@@ -3983,6 +4176,8 @@ function renderOtherNotes() {
   items.push(`<details class="acc"><summary>📅 この壁トラッキングの前提</summary>
     <div class="acc-body"><div class="note">
       ・収入の年の帰属は<b>支払日</b>で判定しています（所得税法上、給与は支給日の属する年の収入）。<br>
+      ・<b>有給休暇の賃金も給与収入</b>なので、壁の判定に含めています。通勤費は実際に出勤していないため
+      既定では付けません（設定タブのバイト先ごとに変えられます）。<br>
       ・住民税の非課税限度額は<b>扶養親族がいない単身者</b>の金額です。扶養している家族がいる場合は上がります。<br>
       ・${STATE.activeYear}年分の${taxYearData(STATE.activeYear).era}として計算しています。
       178万円などの金額は<b>令和8年分・令和9年分限りの時限措置</b>で、令和10年分以降は物価に応じて再設定される見込みです。<br>
@@ -4140,6 +4335,33 @@ function renderJobs() {
           <select data-jf="paymentDay" data-ji="${i}">${dayOptionsHTML(job.paymentDay)}</select></div>
         <div class="field"><label>支払日が休日の場合</label>
           <select data-jf="holidayAdjustment" data-ji="${i}">${optHTML([['before','前営業日'],['after','翌営業日'],['none','調整しない']], job.holidayAdjustment)}</select></div>
+      </div>
+
+      <div class="hr"></div>
+      <div class="note" style="margin-bottom:8px;"><b>有給休暇</b></div>
+      <div class="grid">
+        <div class="field"><label>1日あたりの時間数</label>
+          <input type="number" step="0.5" min="0" max="24" data-jf="paidLeaveHours" data-ji="${i}"
+                 value="${job.paidLeaveHours || ''}" placeholder="例: 8"></div>
+        <div class="field"><label>賃金の計算方法</label>
+          <select data-jf="paidLeaveBasis" data-ji="${i}">${optHTML([
+            ['base','基本時給 × 時間'],['band','時間帯別の時給 × 時間'],
+            ['average','平均賃金（直近3ヶ月）'],['fixed','1日あたり固定額']
+          ], job.paidLeaveBasis || 'base')}</select></div>
+        ${job.paidLeaveBasis === 'fixed'
+          ? `<div class="field"><label>1日あたりの額(円)</label>
+               <input type="number" min="0" data-jf="paidLeaveFixed" data-ji="${i}"
+                      value="${job.paidLeaveFixed || ''}"></div>` : ''}
+        <div class="field"><label>有給の日も通勤費が出る</label>
+          <select data-jf="paidLeaveCommute" data-ji="${i}">${optHTML([['false','いいえ'],['true','はい']], job.paidLeaveCommute)}</select></div>
+      </div>
+      <div class="note tight" style="margin-top:6px;">
+        有給の賃金の出し方は労基法で3通り認められていて、どれを使うかは<b>就業規則</b>で決まっています。
+        雇用契約書や就業規則の「年次有給休暇」の項を見てください。時給制でいちばん多いのは
+        「通常の賃金」＝<b>基本時給 × その日の所定労働時間</b>です。<br>
+        平均賃金は直前3ヶ月の賃金総額を暦日数で割った額で、時給制には
+        「労働日数で割って60%」という最低保障があるため、アプリは高いほうを使います。
+        実際に出勤していないので、通勤費は既定では付けません。
       </div>
 
       <div class="hr"></div>
@@ -4422,9 +4644,10 @@ $('theme-toggle').addEventListener('click', () => {
 });
 
 /* --- シフト入力 --- */
-['in-date', 'in-break'].forEach((id) => $(id).addEventListener('input', renderPreview));
-['in-start-h','in-start-m','in-end-h','in-end-m','in-break-start']
+['in-date', 'in-break', 'in-leave-hours'].forEach((id) => $(id).addEventListener('input', renderPreview));
+['in-start-h','in-start-m','in-end-h','in-end-m','in-break-start','in-leave-start']
   .forEach((id) => $(id).addEventListener('change', renderPreview));
+$('in-kind').addEventListener('change', () => { renderEntryMode(); renderPreview(); });
 
 $('quick-shifts').addEventListener('click', (e) => {
   const b = e.target.closest('[data-qs-start]');
@@ -4438,17 +4661,30 @@ $('quick-shifts').addEventListener('click', (e) => {
 
 $('btn-add-shift').addEventListener('click', async () => {
   const date = $('in-date').value;
-  if (!date) { alert('勤務日を入力してください'); return; }
+  if (!date) { alert($('in-kind').value === 'leave' ? '取得日を入力してください' : '勤務日を入力してください'); return; }
   if (!STATE.activeJobId) { alert('先に設定タブでバイト先を登録してください'); return; }
-  const start = $('in-start-h').value + ':' + $('in-start-m').value;
-  const end   = $('in-end-h').value + ':' + $('in-end-m').value;
-  if (start === end) { alert('開始と終了が同じ時刻です'); return; }
-  const shift = {
-    id: uid(), jobId: STATE.activeJobId, date, start, end,
-    breakMin: Number($('in-break').value) || 0
-  };
-  const bs = $('in-break-start').value;
-  if (bs) shift.breakStart = bs;
+
+  let shift;
+  if ($('in-kind').value === 'leave') {
+    const job = getJob(STATE.activeJobId);
+    const hours = Number($('in-leave-hours').value) || 0;
+    const basis = job.paidLeaveBasis || 'base';
+    if (!hours && (basis === 'base' || basis === 'band')) {
+      alert('有給の時間数を入力してください'); return;
+    }
+    shift = { id: uid(), jobId: STATE.activeJobId, date, kind: 'leave', hours };
+    if (basis === 'band') shift.start = $('in-leave-start').value;
+  } else {
+    const start = $('in-start-h').value + ':' + $('in-start-m').value;
+    const end   = $('in-end-h').value + ':' + $('in-end-m').value;
+    if (start === end) { alert('開始と終了が同じ時刻です'); return; }
+    shift = {
+      id: uid(), jobId: STATE.activeJobId, date, start, end,
+      breakMin: Number($('in-break').value) || 0
+    };
+    const bs = $('in-break-start').value;
+    if (bs) shift.breakStart = bs;
+  }
   STATE.shifts.push(shift);
   /* 追加した日がカレンダーに見えるようにしておく */
   STATE.calMonth = shift.date.slice(0, 7);
@@ -4587,8 +4823,10 @@ PROFILE_BINDINGS.forEach(([id, key, cast]) => {
 /* --- バイト先設定 --- */
 const NUMERIC_JOB_FIELDS = new Set(['baseWage','sunAdd','tripFare','passFare','passThreshold',
                                     'cutoffDay','paymentMonthsAfter','paymentDay','timeRoundUnit',
-                                    'contractWeeklyHours','employerSize','fullTimeWeeklyHours']);
-const BOOL_JOB_FIELDS = new Set(['commuteTaxExempt','autoNightPremium','autoOvertimePremium']);
+                                    'contractWeeklyHours','employerSize','fullTimeWeeklyHours',
+                                    'paidLeaveHours','paidLeaveFixed']);
+const BOOL_JOB_FIELDS = new Set(['commuteTaxExempt','autoNightPremium','autoOvertimePremium',
+                                 'paidLeaveCommute']);
 
 $('jobs-list').addEventListener('change', async (e) => {
   const el = e.target;
@@ -5500,6 +5738,7 @@ async function init() {
   $('in-start-m').innerHTML = mins.map((m) => `<option>${m}</option>`).join('');
   $('in-end-m').innerHTML   = mins.map((m) => `<option>${m}</option>`).join('');
   $('in-break-start').innerHTML = '<option value="">指定しない</option>' + timeOptionsHTML('');
+  $('in-leave-start').innerHTML = timeOptionsHTML('09:00');
 
   /* 初回セットアップのフォーム */
   $('su-cutoff').innerHTML  = dayOptionsHTML(0);
