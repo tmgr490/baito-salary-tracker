@@ -501,7 +501,8 @@ details.conf-acc > .acc-body{ padding:0 11px 11px; }
 .cal-cell.out{ background:transparent; border-color:transparent; cursor:default; }
 .cal-cell.has{ background:var(--surface-2); }
 .cal-cell.today{ border-color:var(--brand); }
-.cal-cell.sel{ border-color:var(--brand); box-shadow:0 0 0 2px var(--brand-soft) inset; }
+.cal-cell.sel{ border-color:var(--brand); box-shadow:0 0 0 2px var(--brand) inset; }
+.cal-cell.sel .cal-d{ color:var(--brand); }
 .cal-d{ font-size:10.5px; font-weight:800; color:var(--ink-2); line-height:1.4; padding-left:2px; }
 .cal-cell.sat .cal-d{ color:var(--cal-sat); }
 .cal-cell.hol .cal-d{ color:var(--st-crit-ink); }
@@ -539,6 +540,11 @@ details.conf-acc > .acc-body{ padding:0 11px 11px; }
 .cal-row .p{ margin-left:auto; font-size:13px; font-weight:800; font-variant-numeric:tabular-nums; }
 .cal-row .badges{ margin-top:3px; }
 .cal-empty{ padding:11px; font-size:11.5px; color:var(--ink-3); display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+/* タップした日に入れるフォーム。カレンダーの続きだと分かるよう区切りを入れる */
+.cal-form{ margin-top:14px; padding-top:14px; border-top:1px solid var(--line); }
+.cal-form-h{ font-size:13px; font-weight:700; color:var(--ink-2); margin-bottom:10px; }
+.cal-form-h b{ color:var(--ink); font-weight:800; font-size:14px; }
+.cal-form-h .wd{ color:var(--ink-3); font-weight:700; margin-left:4px; }
 
 @media (min-width: 720px){
   .cal-cell{ min-height:78px; padding:5px; gap:3px; }
@@ -948,47 +954,7 @@ body.setup-mode .toast{ bottom:20px; }
 <section class="page" id="page-entry" role="tabpanel" hidden>
   <div class="card">
     <div class="card-head">
-      <h2 id="entry-title">シフトを追加</h2>
-      <span class="spacer"></span>
-      <span class="chip" id="entry-job-chip">-</span>
-    </div>
-    <div class="quick" id="quick-shifts"></div>
-    <div class="grid">
-      <div class="field"><label for="in-kind">種類</label>
-        <select id="in-kind">
-          <option value="work">勤務</option>
-          <option value="leave">有給休暇</option>
-        </select></div>
-      <div class="field"><label for="in-date">勤務日</label><input type="date" id="in-date"></div>
-      <div class="field" id="wrap-leave-hours" hidden><label for="in-leave-hours">有給の時間数</label>
-        <input type="number" id="in-leave-hours" min="0" max="24" step="0.5" inputmode="decimal"></div>
-      <div class="field" id="wrap-leave-start" hidden><label for="in-leave-start">どの時間帯の時給で</label>
-        <select id="in-leave-start" aria-label="有給の時給を取る時刻"></select></div>
-      <div class="field" id="wrap-start"><label for="in-start-h">開始</label>
-        <div class="time-row">
-          <select id="in-start-h" aria-label="開始時"></select><span class="sep">:</span><select id="in-start-m" aria-label="開始分"></select>
-        </div>
-      </div>
-      <div class="field" id="wrap-end"><label for="in-end-h">終了</label>
-        <div class="time-row">
-          <select id="in-end-h" aria-label="終了時"></select><span class="sep">:</span><select id="in-end-m" aria-label="終了分"></select>
-        </div>
-      </div>
-      <div class="field" id="wrap-break"><label for="in-break">休憩(分)</label><input type="number" id="in-break" value="0" min="0" step="5"></div>
-      <div class="field" id="wrap-break-start"><label for="in-break-start">休憩開始(任意)</label>
-        <select id="in-break-start" aria-label="休憩開始時刻"></select>
-      </div>
-    </div>
-    <div class="note tight" id="entry-hint" style="margin:8px 0 12px;">
-      休憩開始を指定すると、その時間帯をピンポイントで無給として差し引きます。未指定の場合は実働時間の平均時給で按分して差し引きます。
-    </div>
-    <div class="banner info" id="entry-preview" style="margin-bottom:12px;"><span class="bi">🧮</span><div id="entry-preview-body">日付と時刻を入力すると見込み日給を表示します。</div></div>
-    <button class="btn block" id="btn-add-shift" type="button">シフトを追加</button>
-  </div>
-
-  <div class="card">
-    <div class="card-head">
-      <h2>登録済みシフト</h2>
+      <h2>シフト</h2>
       <span class="chip" id="shift-count">0件</span>
       <span class="spacer"></span>
       <button class="btn quiet" id="toggle-shift-view" type="button">表で見る</button>
@@ -999,11 +965,46 @@ body.setup-mode .toast{ bottom:20px; }
         <button class="btn quiet cal-nav" id="cal-prev" type="button" aria-label="前の月">‹</button>
         <div class="cal-title" id="cal-title" aria-live="polite">-</div>
         <button class="btn quiet cal-nav" id="cal-next" type="button" aria-label="次の月">›</button>
-        <button class="btn quiet" id="cal-today" type="button">今月</button>
+        <button class="btn quiet" id="cal-today" type="button">今日</button>
       </div>
       <div class="cal-grid" id="cal-grid"></div>
       <div class="cal-sum" id="cal-sum"></div>
       <div id="cal-day"></div>
+
+      <!-- タップした日に追加するフォーム。日付欄が要らないのは、
+           どの日に入れるかがカレンダーの選択そのものだから。 -->
+      <div id="entry-form" class="cal-form" hidden>
+        <div class="cal-form-h" id="entry-form-head">-</div>
+        <div class="quick" id="quick-shifts"></div>
+        <div class="grid">
+          <div class="field"><label for="in-kind">種類</label>
+            <select id="in-kind">
+              <option value="work">勤務</option>
+              <option value="leave">有給休暇</option>
+            </select></div>
+          <div class="field" id="wrap-leave-hours" hidden><label for="in-leave-hours">有給の時間数</label>
+            <input type="number" id="in-leave-hours" min="0" max="24" step="0.5" inputmode="decimal"></div>
+          <div class="field" id="wrap-leave-start" hidden><label for="in-leave-start">どの時間帯の時給で</label>
+            <select id="in-leave-start" aria-label="有給の時給を取る時刻"></select></div>
+          <div class="field" id="wrap-start"><label for="in-start-h">開始</label>
+            <div class="time-row">
+              <select id="in-start-h" aria-label="開始時"></select><span class="sep">:</span><select id="in-start-m" aria-label="開始分"></select>
+            </div>
+          </div>
+          <div class="field" id="wrap-end"><label for="in-end-h">終了</label>
+            <div class="time-row">
+              <select id="in-end-h" aria-label="終了時"></select><span class="sep">:</span><select id="in-end-m" aria-label="終了分"></select>
+            </div>
+          </div>
+          <div class="field" id="wrap-break"><label for="in-break">休憩(分)</label><input type="number" id="in-break" value="0" min="0" step="5"></div>
+          <div class="field" id="wrap-break-start"><label for="in-break-start">休憩開始(任意)</label>
+            <select id="in-break-start" aria-label="休憩開始時刻"></select>
+          </div>
+        </div>
+        <div class="note tight" id="entry-hint" style="margin:8px 0 12px;"></div>
+        <div class="banner info" id="entry-preview" style="margin-bottom:12px;"><span class="bi">🧮</span><div id="entry-preview-body">-</div></div>
+        <button class="btn block" id="btn-add-shift" type="button">シフトを追加</button>
+      </div>
     </div>
 
     <div id="shift-table" hidden>
@@ -1014,6 +1015,9 @@ body.setup-mode .toast{ bottom:20px; }
           </tr></thead>
           <tbody id="shift-tbody"></tbody>
         </table>
+      </div>
+      <div class="note tight" style="margin-top:10px;">
+        追加はカレンダー表示から行います。右上の「カレンダーで見る」に切り替えて、日付をタップしてください。
       </div>
     </div>
     <div class="empty" id="shift-empty" hidden>まだシフトが登録されていません</div>
@@ -3437,8 +3441,13 @@ function renderHome(agg) {
 }
 
 function renderEntry() {
-  const job = getJob(STATE.activeJobId);
-  $('entry-job-chip').textContent = job ? job.name : '—';
+  /* 入力タブを開いた時点で入れられるように、何も選んでいなければ今日を選ぶ。
+     フォームの表示可否と見込み額がこれを見るので、何より先に決める。 */
+  if (!STATE.calMonth) STATE.calMonth = toKey(new Date()).slice(0, 7);
+  if (!STATE.calDay) {
+    const today = toKey(new Date());
+    if (today.slice(0, 7) === STATE.calMonth) STATE.calDay = today;
+  }
 
   /* よく使う時間帯 */
   const counts = {};
@@ -3463,15 +3472,22 @@ function renderEntryMode() {
   const leave = $('in-kind').value === 'leave';
   const basis = (job && job.paidLeaveBasis) || 'base';
 
+  /* 日を選んでいないとどこにも入れられないので、フォームごと隠す */
+  $('entry-form').hidden = !STATE.calDay;
+  if (STATE.calDay) {
+    const d = parseYMD(STATE.calDay);
+    $('entry-form-head').innerHTML =
+      `<b>${d.getMonth() + 1}月${d.getDate()}日(${WD[d.getDay()]})</b> に追加`
+      + (job ? ` <span class="wd">${esc(job.name)}</span>` : '');
+  }
+
   ['wrap-start', 'wrap-end', 'wrap-break', 'wrap-break-start'].forEach((id) => {
     $(id).hidden = leave;
   });
   $('wrap-leave-hours').hidden = !leave;
   $('wrap-leave-start').hidden = !(leave && basis === 'band');
   $('quick-shifts').hidden = leave;
-  document.querySelector('label[for="in-date"]').textContent = leave ? '取得日' : '勤務日';
   $('btn-add-shift').textContent = leave ? '有給を追加' : 'シフトを追加';
-  $('entry-title').textContent = leave ? '有給を追加' : 'シフトを追加';
 
   if (leave && $('in-leave-hours').value === '') {
     $('in-leave-hours').value = (job && job.paidLeaveHours) || '';
@@ -3626,54 +3642,46 @@ function renderCalendar(byDate) {
     : '<span>この月のシフトはまだありません</span>';
 }
 
-/* 選んだ日の明細。削除はここから */
+/* 選んだ日に既に入っているぶん。削除はここから。
+   日付の見出しは下の入力フォームが持っているので、ここでは件数だけ出す。 */
 function renderCalDay(byDate) {
   const host = $('cal-day');
   const key = STATE.calDay;
-  if (!key) {
-    host.innerHTML = '<div class="note tight" style="margin-top:10px;">'
-      + '日付をタップすると、その日のシフトの詳細と削除ボタンが出ます。</div>';
-    return;
-  }
-  const d = parseYMD(key);
-  const shifts = byDate[key] || [];
+  const shifts = (key && byDate[key]) || [];
+  if (!key || !shifts.length) { host.innerHTML = ''; return; }
   const hol = STATE.holidays[key];
   host.innerHTML = `<div class="cal-day">
     <div class="cal-day-h">
-      <span>${d.getMonth() + 1}月${d.getDate()}日<span class="wd">(${WD[d.getDay()]})</span></span>
+      <span>この日の登録ぶん</span>
       ${hol ? `<span class="badge hol">${esc(hol)}</span>` : ''}
-      <span style="margin-left:auto;" class="wd">${shifts.length ? shifts.length + '件' : ''}</span>
+      <span style="margin-left:auto;" class="wd">${shifts.length}件</span>
     </div>
-    ${shifts.length
-      ? shifts.map((s) => {
-          const r = calcShift(s);
-          const marks = shiftMarks(s, r);
-          return `<div class="cal-row">
-            <div style="min-width:0;">
-              <div class="t">${isLeave(s) ? '有給休暇' : `${s.start}–${s.end}`}</div>
-              <div class="m">${isLeave(s)
-                ? `${r.hours}時間分 ・ ${esc(r.leave.detail)}`
-                : `実働 ${r.hours.toFixed(2)}h`}</div>
-              ${marks.length ? `<div class="badges">${marks.join('')}</div>` : ''}
-            </div>
-            <div class="p">${yen(shiftPay(s))}</div>
-            <button class="x-btn" data-del-shift="${esc(s.id)}" type="button"
-              aria-label="${esc(s.date)} ${s.start}からのシフトを削除">×</button>
-          </div>`;
-        }).join('')
-      : `<div class="cal-empty"><span>この日のシフトはまだありません</span>
-           <button class="btn quiet" data-cal-add="${key}" type="button"
-             style="margin-left:auto;">この日で入力する</button></div>`}
+    ${shifts.map((s) => {
+      const r = calcShift(s);
+      const marks = shiftMarks(s, r);
+      return `<div class="cal-row">
+        <div style="min-width:0;">
+          <div class="t">${isLeave(s) ? '有給休暇' : `${s.start}–${s.end}`}</div>
+          <div class="m">${isLeave(s)
+            ? `${r.hours}時間分 ・ ${esc(r.leave.detail)}`
+            : `実働 ${r.hours.toFixed(2)}h`}</div>
+          ${marks.length ? `<div class="badges">${marks.join('')}</div>` : ''}
+        </div>
+        <div class="p">${yen(shiftPay(s))}</div>
+        <button class="x-btn" data-del-shift="${esc(s.id)}" type="button"
+          aria-label="${esc(s.date)} ${isLeave(s) ? 'の有給' : s.start + 'からのシフト'}を削除">×</button>
+      </div>`;
+    }).join('')}
   </div>`;
 }
 
 function renderPreview() {
-  const date = $('in-date').value;
+  const date = STATE.calDay;
   const body0 = $('entry-preview-body');
 
   if ($('in-kind').value === 'leave') {
     const job = getJob(STATE.activeJobId);
-    if (!date || !job) { body0.textContent = '取得日を入力すると見込み額を表示します。'; return; }
+    if (!date || !job) { body0.textContent = 'カレンダーで日付をタップしてください。'; return; }
     const hours = Number($('in-leave-hours').value) || 0;
     const shift = { date, jobId: job.id, kind: 'leave', hours };
     if ((job.paidLeaveBasis || 'base') === 'band') shift.start = $('in-leave-start').value;
@@ -3695,7 +3703,7 @@ function renderPreview() {
   const bs    = $('in-break-start').value || '';
   const body  = body0;
   if (!date || !STATE.activeJobId) {
-    body.textContent = '日付を入力すると見込み日給を表示します。';
+    body.textContent = 'カレンダーで日付をタップしてください。';
     return;
   }
   const r = calcShift({ date, start, end, breakMin: brk, breakStart: bs, jobId: STATE.activeJobId });
@@ -4644,7 +4652,7 @@ $('theme-toggle').addEventListener('click', () => {
 });
 
 /* --- シフト入力 --- */
-['in-date', 'in-break', 'in-leave-hours'].forEach((id) => $(id).addEventListener('input', renderPreview));
+['in-break', 'in-leave-hours'].forEach((id) => $(id).addEventListener('input', renderPreview));
 ['in-start-h','in-start-m','in-end-h','in-end-m','in-break-start','in-leave-start']
   .forEach((id) => $(id).addEventListener('change', renderPreview));
 $('in-kind').addEventListener('change', () => { renderEntryMode(); renderPreview(); });
@@ -4660,8 +4668,8 @@ $('quick-shifts').addEventListener('click', (e) => {
 });
 
 $('btn-add-shift').addEventListener('click', async () => {
-  const date = $('in-date').value;
-  if (!date) { alert($('in-kind').value === 'leave' ? '取得日を入力してください' : '勤務日を入力してください'); return; }
+  const date = STATE.calDay;
+  if (!date) { alert('カレンダーで日付をタップしてください'); return; }
   if (!STATE.activeJobId) { alert('先に設定タブでバイト先を登録してください'); return; }
 
   let shift;
@@ -4713,33 +4721,34 @@ function shiftCalMonth(delta) {
   const [y, m] = (STATE.calMonth || toKey(new Date()).slice(0, 7)).split('-').map(Number);
   const d = new Date(y, m - 1 + delta, 1);
   STATE.calMonth = toKey(d).slice(0, 7);
-  /* 表示している月の外の日を選んだままにしない */
-  if (STATE.calDay && STATE.calDay.slice(0, 7) !== STATE.calMonth) STATE.calDay = null;
+  /* 表示している月の外の日を選んだままにしない。
+     選択を外すと入力フォームごと消えてしまうので、その月の中に移す。
+     今日がその月にあれば今日、無ければ1日。 */
+  if (STATE.calDay && STATE.calDay.slice(0, 7) !== STATE.calMonth) {
+    const today = toKey(new Date());
+    STATE.calDay = today.slice(0, 7) === STATE.calMonth ? today : STATE.calMonth + '-01';
+  }
   renderEntry();
 }
 $('cal-prev').addEventListener('click', () => shiftCalMonth(-1));
 $('cal-next').addEventListener('click', () => shiftCalMonth(1));
 $('cal-today').addEventListener('click', () => {
   STATE.calMonth = toKey(new Date()).slice(0, 7);
-  STATE.calDay = null;
+  STATE.calDay = toKey(new Date());
   renderEntry();
 });
 $('cal-grid').addEventListener('click', (e) => {
   const b = e.target.closest('[data-cal-d]');
   if (!b) return;
-  /* 同じ日をもう一度押したら閉じる */
-  STATE.calDay = STATE.calDay === b.dataset.calD ? null : b.dataset.calD;
+  /* タップ＝その日に入力する、なので閉じるトグルは持たせない */
+  STATE.calDay = b.dataset.calD;
   renderEntry();
+  /* 画面の下にフォームが隠れていたら、最小限だけスクロールして見せる */
+  $('entry-form').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 });
 $('cal-day').addEventListener('click', (e) => {
   const del = e.target.closest('[data-del-shift]');
-  if (del) { deleteShift(del.dataset.delShift); return; }
-  const add = e.target.closest('[data-cal-add]');
-  if (add) {
-    $('in-date').value = add.dataset.calAdd;
-    renderPreview();
-    $('in-date').scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }
+  if (del) deleteShift(del.dataset.delShift);
 });
 
 /* --- 給与サイクル --- */
@@ -5729,7 +5738,6 @@ async function init() {
   }
 
   /* 入力フォームの初期化 */
-  $('in-date').valueAsDate = new Date();
   const hours = [], mins = [];
   for (let h = 0; h <= 24; h++) hours.push(pad(h));
   for (let m = 0; m < 60; m += 5) mins.push(pad(m));
