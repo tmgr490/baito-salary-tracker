@@ -658,6 +658,38 @@ body.setup-mode{ padding-bottom:24px; }
 .toast .btn{ flex:0 0 auto; }
 body.setup-mode .toast{ bottom:20px; }
 
+/* ---------------- 更新の帯 ---------------- */
+.updatebar{
+  position:fixed; left:12px; right:12px; z-index:55;
+  bottom:calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 12px);
+  max-width:460px; margin:0 auto;
+  background:var(--brand); color:#fff;
+  border-radius:var(--r-md); box-shadow:var(--shadow);
+  padding:10px 10px 10px 14px;
+  display:flex; align-items:center; gap:10px;
+  font-size:12.5px; font-weight:700;
+}
+.updatebar[hidden]{ display:none !important; }
+.ub-text{ min-width:0; flex:1 1 auto; }
+.ub-dot{
+  width:8px; height:8px; border-radius:50%; background:#fff; flex:0 0 auto;
+  animation: ub-pulse 1.8s ease-in-out infinite;
+}
+@keyframes ub-pulse{ 0%,100%{ opacity:1; } 50%{ opacity:.35; } }
+.updatebar .btn{
+  flex:0 0 auto; background:#fff; color:var(--brand); border-color:#fff;
+}
+.ub-close{
+  appearance:none; border:0; background:transparent; color:#fff; cursor:pointer;
+  font-size:17px; line-height:1; width:32px; height:32px; border-radius:8px;
+  display:grid; place-items:center; padding:0; flex:0 0 auto; opacity:.85;
+}
+@media (hover: hover){ .ub-close:hover{ background:rgba(255,255,255,.18); } }
+/* デスクトップはタブバーが下に無いので、画面の端から浮かせるだけでよい */
+@media (min-width: 720px){ .updatebar{ bottom:20px; } }
+body.setup-mode .updatebar{ bottom:20px; }
+@media (prefers-reduced-motion: reduce){ .ub-dot{ animation:none; } }
+
 /* ---------------- modal ---------------- */
 .modal{
   position:fixed; inset:0; z-index:70;
@@ -1421,6 +1453,14 @@ body.setup-mode .toast{ bottom:20px; }
 </section>
 
 </main>
+
+<!-- アプリが更新された時に出す帯。消えると気づけないので自動では閉じない -->
+<div class="updatebar" id="update-bar" role="status" aria-live="polite" hidden>
+  <span class="ub-dot" aria-hidden="true"></span>
+  <span class="ub-text">新しいバージョンがあります</span>
+  <button class="btn sm" id="btn-update-now" type="button">更新する</button>
+  <button class="ub-close" id="btn-update-later" type="button" aria-label="あとで">×</button>
+</div>
 
 <!-- 読み込み方法の確認 -->
 <div class="modal" id="import-modal" hidden>
@@ -5785,26 +5825,102 @@ function toast(message, action) {
    ホーム画面に追加したWebアプリはその対象外になる。
    PWA化は見た目のためではなく、データを失わないために必要。
    -------------------------------------------------------------------------- */
+/* --------------------------------------------------------------------------
+   更新の検知
+
+   Service Worker の updatefound は「sw.js 自体が変わった時」にしか起きない。
+   このアプリは index.html だけ直すことが多く、それだと何も起きないまま
+   利用者は古い画面を見続けることになる（実際ずっとそうなっていた）。
+
+   そこで index.html の版（ETag / Last-Modified / Content-Length）を
+   HEAD で見に行って、起動時のものと変わっていたら帯を出す。
+   HEAD は Service Worker の fetch ハンドラが GET 以外を素通しするので、
+   キャッシュに邪魔されずに本物の状態が取れる。
+   -------------------------------------------------------------------------- */
+let PAGE_TAG = null;        // この画面が読み込まれた時点の版
+let DISMISSED_TAG = null;   // 「あとで」を押された版。同じ版では二度出さない
+let UPDATE_TIMER = null;
+const UPDATE_INTERVAL = 30 * 60 * 1000;
+
+async function fetchPageTag() {
+  try {
+    const res = await fetch('./index.html?vcheck=' + Date.now(),
+                            { method: 'HEAD', cache: 'no-store' });
+    if (!res.ok) return null;
+    const h = res.headers;
+    const tag = [h.get('ETag'), h.get('Last-Modified'), h.get('Content-Length')]
+      .filter(Boolean).join('|');
+    return tag || null;
+  } catch (e) { return null; }   /* オフラインなら黙って見送る */
+}
+
+function showUpdateBar() {
+  const bar = $('update-bar');
+  if (bar) bar.hidden = false;
+}
+
+async function checkForUpdate() {
+  const tag = await fetchPageTag();
+  if (!tag) return;
+  /* 最初の1回は基準を決めるだけ。ここで出してしまうと毎回出る */
+  if (!PAGE_TAG) { PAGE_TAG = tag; return; }
+  if (tag !== PAGE_TAG && tag !== DISMISSED_TAG) showUpdateBar();
+}
+
+function startUpdateWatch() {
+  /* file:// では版を取りに行けないので何もしない */
+  if (!window.isSecureContext) return;
+  checkForUpdate();
+  /* ホーム画面から戻ってきた時が一番見つけやすい */
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') checkForUpdate();
+  });
+  clearInterval(UPDATE_TIMER);
+  UPDATE_TIMER = setInterval(checkForUpdate, UPDATE_INTERVAL);
+}
+
+function bindUpdateBar() {
+  $('btn-update-later').addEventListener('click', async () => {
+    /* 今出ている版を控えて、同じ版では二度と出さない */
+    const tag = await fetchPageTag();
+    if (tag) DISMISSED_TAG = tag;
+    $('update-bar').hidden = true;
+  });
+  $('btn-update-now').addEventListener('click', async () => {
+    $('btn-update-now').disabled = true;
+    /* 待機中の Service Worker があれば先に入れ替える。
+       入れ替わると controllerchange が飛んでリロードされる。 */
+    try {
+      if ('serviceWorker' in navigator) {
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (reg && reg.waiting) { reg.waiting.postMessage('SKIP_WAITING'); return; }
+      }
+    } catch (e) { /* 取れなければ普通にリロードする */ }
+    location.reload();
+  });
+}
+
 function registerServiceWorker() {
   /* Service Worker は安全なコンテキストでしか動かない。
      isSecureContext は https に加えて http://localhost も true になるので、
      file:// だけを正しく弾ける。 */
   if (!('serviceWorker' in navigator) || !window.isSecureContext) return;
 
+  /* 初回インストールでも controllerchange は飛ぶ。
+     その時にリロードすると初訪問で画面が一瞬で入れ替わるので、
+     「もともと誰かが制御していた＝更新」の時だけリロードする。 */
+  const hadController = !!navigator.serviceWorker.controller;
+
   navigator.serviceWorker.register('sw.js').then((reg) => {
-    /* 既に別のSWが動いている状態で新しいものが入ったら＝更新がある */
-    const notify = (worker) => {
-      toast('新しいバージョンがあります', {
-        label: '再読み込み',
-        onClick: () => worker.postMessage('SKIP_WAITING')
-      });
-    };
-    if (reg.waiting && navigator.serviceWorker.controller) notify(reg.waiting);
+    /* 既に別のSWが動いている状態で新しいものが入ったら＝更新がある。
+       ただし sw.js が変わらない限りここは動かないので、
+       本命は上の checkForUpdate のほう。 */
+    if (reg.waiting && navigator.serviceWorker.controller) showUpdateBar();
     reg.addEventListener('updatefound', () => {
       const sw = reg.installing;
       if (!sw) return;
       sw.addEventListener('statechange', () => {
-        if (sw.state === 'installed' && navigator.serviceWorker.controller) notify(sw);
+        if (sw.state === 'installed' && navigator.serviceWorker.controller) showUpdateBar();
       });
     });
   }).catch((e) => console.warn('SW register failed', e));
@@ -5812,7 +5928,7 @@ function registerServiceWorker() {
   /* 新しいSWが主導権を取ったら一度だけリロードする */
   let reloading = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (reloading) return;
+    if (!hadController || reloading) return;
     reloading = true;
     location.reload();
   });
@@ -5951,7 +6067,9 @@ async function init() {
 
   renderStorage();
   renderAll();
+  bindUpdateBar();
   registerServiceWorker();
+  startUpdateWatch();
 
   /* チャートだけ幅の変化に追従させる。renderAll() を呼ぶと
      フォーム入力中に再描画されて入力が飛ぶので、チャートに限定する。 */
