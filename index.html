@@ -351,6 +351,7 @@ td .wd{ color:var(--ink-3); font-weight:600; }
 .badge.hol{ background:color-mix(in srgb, var(--st-crit) 14%, transparent); color:var(--st-crit-ink); }
 .badge.ovn{ background:color-mix(in srgb, var(--st-warn) 20%, transparent); color:var(--st-warn-ink); }
 .badge.leave{ background:color-mix(in srgb, var(--cal-sat) 18%, transparent); color:var(--cal-sat); }
+.badge.koma{ background:var(--brand-soft); color:var(--brand); }
 .x-btn{
   appearance:none; border:0; background:transparent; cursor:pointer;
   color:var(--ink-3); font-size:18px; line-height:1; border-radius:8px;
@@ -545,6 +546,9 @@ details.conf-acc > .acc-body{ padding:0 11px 11px; }
 .cal-form-h{ font-size:13px; font-weight:700; color:var(--ink-2); margin-bottom:10px; }
 .cal-form-h b{ color:var(--ink); font-weight:800; font-size:14px; }
 .cal-form-h .wd{ color:var(--ink-3); font-weight:700; margin-left:4px; }
+/* 時給換算。コマ給で一番見たい数字なので目立たせる */
+.conv{ color:var(--brand); font-weight:700; }
+.conv.bad{ color:var(--st-crit-ink); }
 
 @media (min-width: 720px){
   .cal-cell{ min-height:78px; padding:5px; gap:3px; }
@@ -986,6 +990,8 @@ body.setup-mode .toast{ bottom:20px; }
             <input type="number" id="in-leave-hours" min="0" max="24" step="0.5" inputmode="decimal"></div>
           <div class="field" id="wrap-leave-start" hidden><label for="in-leave-start">どの時間帯の時給で</label>
             <select id="in-leave-start" aria-label="有給の時給を取る時刻"></select></div>
+          <div class="field" id="wrap-periods" hidden><label for="in-periods">コマ数</label>
+            <input type="number" id="in-periods" min="0" max="20" step="0.5" inputmode="decimal" value="1"></div>
           <div class="field" id="wrap-start"><label for="in-start-h">開始</label>
             <div class="time-row">
               <select id="in-start-h" aria-label="開始時"></select><span class="sep">:</span><select id="in-start-m" aria-label="開始分"></select>
@@ -1764,6 +1770,13 @@ const DEFAULT_HOLIDAYS = [
 /* 金額・時間帯・締め日の実値は一切持たない。初回セットアップで入力してもらう。
    ここにあるのは「型を満たすための中立な初期値」だけ。 */
 const JOB_DEFAULTS = {
+  /* 給与の形。塾などは1コマいくらの「コマ給」で、時給が存在しない。
+     コマ給は拘束時間で割ると最低賃金を下回ることがあるので、時給換算を出す。 */
+  wageMode: 'hourly',        // 'hourly' 時給制 / 'period' コマ給制
+  periodMinutes: 90,         // 1コマの時間（分）
+  periodPay: 0,              // 1コマの単価（円）
+  nonPeriodWage: 0,          // コマ以外の時間（準備・片付け・事務）の時給。0なら支払いなし
+  minWage: 0,                // 勤務地の最低賃金（円/時）。0なら判定しない
   baseWage: 0,
   wageBands: [],
   sunAdd: 0,
@@ -2157,21 +2170,27 @@ const LEAVE_BASIS_LABEL = {
 /* 有給1日分の賃金。hours は週の労働時間の集計にも使うので必ず返す */
 function paidLeaveCalc(shift, job) {
   const hours = Number(shift.hours) || Number(job.paidLeaveHours) || 0;
-  const basis = job.paidLeaveBasis || 'base';
+  /* コマ給には「時給」が無いので、時給ベースの方法は選べない。
+     その場合は平均賃金に寄せる（所定コマ数×単価を出したい人は固定額を使う）。 */
+  let basis = job.paidLeaveBasis || 'base';
+  if (isPeriodJob(job) && (basis === 'base' || basis === 'band')) basis = 'average';
 
   if (basis === 'fixed') {
     return { pay: Number(job.paidLeaveFixed) || 0, hours, rate: null, basis,
              detail: `1日あたり${yen(Number(job.paidLeaveFixed) || 0)}の固定額` };
   }
+  const swapped = isPeriodJob(job) && basis !== (job.paidLeaveBasis || 'base')
+    ? '（コマ給には時給が無いため平均賃金で計算しています）' : '';
+
   if (basis === 'average') {
     const av = averageWage(job, shift.date);
     return { pay: av ? av.amount : 0, hours, rate: null, basis, av,
-             detail: av
+             detail: swapped + (av
                ? `${av.from}〜${av.to}の賃金${yen(Math.round(av.total))}を`
                  + (av.usedMinimum
                      ? `労働日数${av.workDays}日で割って60%（最低保障）`
                      : `暦日数${av.days}日で割った額`)
-               : '直前3ヶ月に勤務の記録がないため計算できません' };
+               : '直前3ヶ月に勤務の記録がないため計算できません') };
   }
   const rate = basis === 'band' && shift.start
     ? wageRateAt(job, shift.date, shift.start)
@@ -2179,6 +2198,43 @@ function paidLeaveCalc(shift, job) {
   return { pay: rate * hours, hours, rate, basis,
            detail: `${yen(rate)}/時 × ${hours}時間`
                  + (basis === 'band' && shift.start ? `（${shift.start}〜の時給）` : '') };
+}
+
+/* --------------------------------------------------------------------------
+   コマ給
+
+   塾などは「1コマ◯◯円」で、時給という概念が無い。コマの時間（80分・90分など）
+   だけが賃金の対象で、授業前の準備や後片付け・報告書の時間は別扱いになる。
+   そのため拘束時間で割り戻すと時給換算が大きく下がり、最低賃金を割ることがある。
+   ここで出す「時給換算」は 支給額 ÷ 実労働時間 で、まさにその判定に使う値。
+   -------------------------------------------------------------------------- */
+const isPeriodJob = (job) => !!job && job.wageMode === 'period';
+
+/* hours は休憩と丸めを反映した実労働時間 */
+function periodPayCalc(shift, job, hours) {
+  const mins    = Number(job.periodMinutes) || 90;
+  const periods = Number(shift.periods) || 0;
+  const periodH = periods * mins / 60;
+  /* コマの合計より長く拘束されていれば、その差がコマ外の時間 */
+  const extraH  = Math.max(0, hours - periodH);
+  const periodWage = periods * (Number(job.periodPay) || 0);
+  const extraWage  = extraH * (Number(job.nonPeriodWage) || 0);
+  const pay = periodWage + extraWage;
+  return { periods, periodMinutes: mins, periodH, extraH, periodWage, extraWage, pay,
+           perHour: hours > 0 ? pay / hours : 0 };
+}
+
+/* 支給額 ÷ 実労働時間。コマ給でなくても出せる（休憩や加算が効いた後の実効時給） */
+function hourlyEquivalent(shift) {
+  const r = calcShift(shift);
+  return r.hours > 0 ? r.pay / r.hours : 0;
+}
+
+/* 最低賃金を下回っていないか。未入力なら判定しない */
+function minWageCheck(job, perHour) {
+  const min = Number(job && job.minWage) || 0;
+  if (!min || !perHour) return null;
+  return { min, perHour, below: perHour < min - 1e-9, diff: Math.round(min - perHour) };
 }
 
 function calcShift(shift) {
@@ -2211,6 +2267,15 @@ function calcShift(shift) {
       ? Math.round(paid / step) * step
       : Math.floor(paid / step + 1e-9) * step;
     if (paid > 0) factor *= (target / paid);
+  }
+
+  /* コマ給は時間帯や日祝で単価が変わらないので、実労働時間だけ出して
+     コマ数から支給額を組み立てる */
+  if (isPeriodJob(job)) {
+    const h = rawHours * factor;
+    const r = periodPayCalc(shift, job, h);
+    return { pay: r.pay, payRounded: roundBy(r.pay, job.roundingMode), hours: h,
+             type: rated[0].type, nightHours: 0, otHours: 0, period: r };
   }
 
   let pay = 0, hours = 0, cum = 0, nightHours = 0, otHours = 0;
@@ -3484,6 +3549,8 @@ function renderEntryMode() {
   ['wrap-start', 'wrap-end', 'wrap-break', 'wrap-break-start'].forEach((id) => {
     $(id).hidden = leave;
   });
+  /* コマ給は拘束時間に加えてコマ数が要る */
+  $('wrap-periods').hidden = leave || !isPeriodJob(job);
   $('wrap-leave-hours').hidden = !leave;
   $('wrap-leave-start').hidden = !(leave && basis === 'band');
   $('quick-shifts').hidden = leave;
@@ -3499,8 +3566,15 @@ function renderEntryMode() {
           : '')
       + (job && !job.paidLeaveHours
           ? '<br>1日あたりの時間を設定タブに入れておくと、毎回自動で入ります。' : '')
-    : '休憩開始を指定すると、その時間帯をピンポイントで無給として差し引きます。'
-      + '未指定の場合は実働時間の平均時給で按分して差し引きます。';
+    : isPeriodJob(job)
+      ? `1コマ${job.periodMinutes || 90}分 × ${yen(job.periodPay || 0)}。`
+        + '<b>開始と終了は拘束時間で入れてください。</b>'
+        + 'コマの合計を超えた分は'
+        + (Number(job.nonPeriodWage) > 0
+            ? `コマ以外の時給（${yen(job.nonPeriodWage)}/時）で計算します。`
+            : '<b>無給</b>として計算します（設定で変えられます）。')
+      : '休憩開始を指定すると、その時間帯をピンポイントで無給として差し引きます。'
+        + '未指定の場合は実働時間の平均時給で按分して差し引きます。';
 }
 
 /* --------------------------------------------------------------------------
@@ -3526,6 +3600,7 @@ function shiftMarks(s, r) {
     if (r.leave) marks.push(`<span class="badge">${esc(LEAVE_BASIS_LABEL[r.leave.basis])}</span>`);
     return marks;
   }
+  if (r.period) marks.push(`<span class="badge koma">${r.period.periods}コマ</span>`);
   if (r.type === 'holiday') marks.push('<span class="badge hol">日祝</span>');
   if (timeToHours(s.end) <= timeToHours(s.start)) marks.push('<span class="badge ovn">日跨ぎ</span>');
   if (r.nightHours > 0) marks.push('<span class="badge">深夜</span>');
@@ -3585,7 +3660,7 @@ function renderCalendar(byDate) {
   let html = CAL_ORDER.map((wd) =>
     `<div class="cal-wd${wd === 6 ? ' sat' : wd === 0 ? ' sun' : ''}">${WD[wd]}</div>`).join('');
 
-  const sum = { days: 0, leaveDays: 0, hours: 0, pay: 0 };
+  const sum = { days: 0, leaveDays: 0, periods: 0, hours: 0, pay: 0 };
   for (let i = 0; i < rows * 7; i++) {
     const d = new Date(y, m - 1, 1 - lead + i);
     const key = toKey(d);
@@ -3596,7 +3671,11 @@ function renderCalendar(byDate) {
     if (shifts.length) {
       if (shifts.some((x) => !isLeave(x))) sum.days++;
       if (shifts.some(isLeave)) sum.leaveDays++;
-      shifts.forEach((s) => { sum.hours += calcShift(s).hours; sum.pay += shiftPay(s); });
+      shifts.forEach((s) => {
+        const c = calcShift(s);
+        sum.hours += c.hours; sum.pay += shiftPay(s);
+        if (c.period) sum.periods += c.period.periods;
+      });
     }
 
     const cls = ['cal-cell'];
@@ -3614,8 +3693,9 @@ function renderCalendar(byDate) {
         return `<div class="cal-chip leave">有給${h ? h + 'h' : ''}</div>`;
       }
       const over = timeToHours(s.end) <= timeToHours(s.start);
+      const n = Number(s.periods) || 0;
       return `<div class="cal-chip${over ? ' ovn' : ''}">${
-        compactTime(s.start)}-${compactTime(s.end)}</div>`;
+        n ? n + 'コマ' : compactTime(s.start) + '-' + compactTime(s.end)}</div>`;
     }).join('');
     const more = shifts.length > 2 ? `<div class="cal-more">他${shifts.length - 2}件</div>` : '';
 
@@ -3633,8 +3713,18 @@ function renderCalendar(byDate) {
   $('cal-sum').innerHTML = (sum.days || sum.leaveDays)
     ? `<span><b>${sum.days}</b>日勤務</span>
        ${sum.leaveDays ? `<span>有給 <b>${sum.leaveDays}</b>日</span>` : ''}
+       ${sum.periods ? `<span><b>${sum.periods}</b>コマ</span>` : ''}
        <span>実働 <b>${sum.hours.toFixed(1)}</b>h</span>
        <span>日給の合計 <b>${yen(Math.round(sum.pay))}</b></span>
+       ${sum.periods && sum.hours > 0 ? (() => {
+          const ph = sum.pay / sum.hours;
+          const chk = minWageCheck(job, ph);
+          return `<span>時給換算 <b class="conv${chk && chk.below ? ' bad' : ''}">${
+            yen(Math.round(ph))}</b></span>`
+            + (chk && chk.below
+                ? `<span class="s-crit" style="font-weight:700;">最低賃金 ${yen(chk.min)} を下回っています</span>`
+                : '');
+       })() : ''}
        ${job && job.cutoffDay !== 0
          ? `<span style="color:var(--ink-3); font-weight:600;">
               ※ 暦月の合計です。締め日が${job.cutoffDay}日なので給与明細の期間とは一致しません</span>`
@@ -3664,7 +3754,10 @@ function renderCalDay(byDate) {
           <div class="t">${isLeave(s) ? '有給休暇' : `${s.start}–${s.end}`}</div>
           <div class="m">${isLeave(s)
             ? `${r.hours}時間分 ・ ${esc(r.leave.detail)}`
-            : `実働 ${r.hours.toFixed(2)}h`}</div>
+            : `実働 ${r.hours.toFixed(2)}h`
+              + (r.period ? ` ・ <span class="conv${
+                  (minWageCheck(getJob(s.jobId), r.period.perHour) || {}).below ? ' bad' : ''
+                }">時給換算 ${yen(Math.round(r.period.perHour))}</span>` : '')}</div>
           ${marks.length ? `<div class="badges">${marks.join('')}</div>` : ''}
         </div>
         <div class="p">${yen(shiftPay(s))}</div>
@@ -3706,18 +3799,43 @@ function renderPreview() {
     body.textContent = 'カレンダーで日付をタップしてください。';
     return;
   }
-  const r = calcShift({ date, start, end, breakMin: brk, breakStart: bs, jobId: STATE.activeJobId });
   const job = getJob(STATE.activeJobId);
+  const draft = { date, start, end, breakMin: brk, breakStart: bs, jobId: STATE.activeJobId };
+  if (isPeriodJob(job)) draft.periods = Number($('in-periods').value) || 0;
+  const r = calcShift(draft);
   const overnight = timeToHours(end) <= timeToHours(start);
   const extras = [];
   if (r.nightHours > 0) extras.push(`深夜割増 ${r.nightHours.toFixed(2)}h`);
   if (r.otHours > 0) extras.push(`時間外割増 ${r.otHours.toFixed(2)}h`);
   body.innerHTML = `${r.type === 'holiday' ? '日曜・祝日' : '平日'}扱い`
     + `${overnight ? ' / <b>日をまたぐ勤務</b>' : ''}`
-    + ` ・ 実働 <b>${r.hours.toFixed(2)}時間</b> ・ 見込み日給 <b class="tnum">${yen(shiftPay({ date, start, end, breakMin: brk, breakStart: bs, jobId: STATE.activeJobId }))}</b>`
+    + (r.period ? ` ・ <b>${r.period.periods}コマ</b>` : '')
+    + ` ・ 実働 <b>${r.hours.toFixed(2)}時間</b> ・ 見込み日給 <b class="tnum">${yen(shiftPay(draft))}</b>`
+    + (r.period ? periodBreakdownHTML(r, job) : '')
     + (extras.length ? `<br><span style="color:var(--ink-3)">${extras.join(' / ')}</span>` : '')
     + (job && job.roundingScope === 'monthly'
         ? '<br><span style="color:var(--ink-3)">※ 円未満は月合計で丸める設定のため、実際の支給額とは数円ずれることがあります</span>' : '');
+}
+
+/* コマ給の内訳と時給換算。最低賃金を割っていればそこを強く出す */
+function periodBreakdownHTML(r, job) {
+  const p = r.period;
+  const chk = minWageCheck(job, p.perHour);
+  const conv = `<br><span class="conv ${chk && chk.below ? 'bad' : ''}">時給換算 `
+    + `<b class="tnum">${yen(Math.round(p.perHour))}/時</b></span>`;
+  const detail = `<br><span style="color:var(--ink-3)">`
+    + `コマ ${p.periods}×${yen(job.periodPay || 0)} = ${yen(Math.round(p.periodWage))}`
+    + (p.extraH > 0.001
+        ? ` ／ コマ外 ${p.extraH.toFixed(2)}時間 = ${yen(Math.round(p.extraWage))}`
+          + (Number(job.nonPeriodWage) > 0 ? '' : '（無給）')
+        : '')
+    + `</span>`;
+  const warn = chk && chk.below
+    ? `<br><span class="s-crit" style="font-weight:700;">`
+      + `最低賃金 ${yen(chk.min)}/時 を ${yen(chk.diff)} 下回っています。`
+      + `差額を請求できる可能性があります。</span>`
+    : (chk ? `<br><span style="color:var(--ink-3)">最低賃金 ${yen(chk.min)}/時 は上回っています</span>` : '');
+  return conv + detail + warn;
 }
 
 function renderPay() {
@@ -3745,9 +3863,21 @@ function renderPay() {
   $('cy-days').innerHTML = c.workDays + '<small>日</small>'
     + (c.leaveDays ? `<small> ＋有給${c.leaveDays}日</small>` : '');
   $('cy-wage').textContent = yen(eff.wage);
-  $('cy-wage-sub').textContent = eff.wageCorrected
-    ? `訂正済（計算値 ${yen(c.wage)}）`
-    : (c.leaveDays ? `計算値（うち有給 ${yen(Math.round(c.leaveWage))}）` : '計算値');
+  const cHours = c.inCycle.reduce((a2, x) => a2 + calcShift(x).hours, 0);
+  const cPeriods = c.inCycle.reduce((a2, x) => {
+    const cc = calcShift(x); return a2 + (cc.period ? cc.period.periods : 0); }, 0);
+  const cPerHour = cHours > 0 ? eff.wage / cHours : 0;
+  const cChk = minWageCheck(job, cPerHour);
+  $('cy-wage-sub').innerHTML = (eff.wageCorrected
+      ? `訂正済（計算値 ${yen(c.wage)}）`
+      : (c.leaveDays ? `計算値（うち有給 ${yen(Math.round(c.leaveWage))}）` : '計算値'))
+    + (cPeriods
+        ? `<br>${cPeriods}コマ ・ <span class="conv${cChk && cChk.below ? ' bad' : ''}">`
+          + `時給換算 ${yen(Math.round(cPerHour))}</span>`
+          + (cChk && cChk.below
+              ? `<br><span class="s-crit" style="font-weight:700;">最低賃金 ${yen(cChk.min)} を下回っています</span>`
+              : '')
+        : '');
   $('cy-commute').textContent = yen(eff.commute);
   $('cy-commute-sub').textContent = eff.commuteCorrected
     ? `訂正済（計算値 ${yen(c.commute)}）`
@@ -3774,6 +3904,7 @@ function renderPay() {
     return `<tr>
       <td class="n">${s.date.slice(5)}<span class="wd">(${WD[d.getDay()]})</span></td>
       <td>${isLeave(s) ? '<span class="badge leave">有給</span>'
+             : r.period ? `<span class="badge koma">${r.period.periods}コマ</span>`
              : r.type === 'holiday' ? '<span class="badge hol">日祝</span>'
              : '<span class="wd">—</span>'}</td>
       <td class="n">${isLeave(s) ? '<span class="wd">終日</span>' : `${s.start}-${s.end}`}</td>
@@ -4259,12 +4390,44 @@ function renderJobs() {
   $('jobs-count').textContent = STATE.jobs.length + '件';
   $('jobs-list').innerHTML = STATE.jobs.map((job, i) => `
   <details class="acc" ${STATE.jobs.length === 1 || job.id === STATE.activeJobId ? 'open' : ''}>
-    <summary>${esc(job.name)} <span class="chip">${yen(job.baseWage)}/時〜</span></summary>
+    <summary>${esc(job.name)} <span class="chip">${isPeriodJob(job)
+      ? (job.periodPay ? `${yen(job.periodPay)}/${job.periodMinutes || 90}分` : 'コマ給')
+      : `${yen(job.baseWage)}/時〜`}</span></summary>
     <div class="acc-body">
 
       <div class="grid">
         <div class="field"><label>バイト先名</label>
           <input type="text" data-jf="name" data-ji="${i}" value="${esc(job.name)}"></div>
+        <div class="field"><label>給与の形</label>
+          <select data-jf="wageMode" data-ji="${i}">${optHTML([
+            ['hourly','時給制'],['period','コマ給制（1コマいくら）']
+          ], job.wageMode || 'hourly')}</select></div>
+      </div>
+
+      ${isPeriodJob(job) ? `
+      <div class="grid" style="margin-top:8px;">
+        <div class="field"><label>1コマの時間(分)</label>
+          <input type="number" min="1" max="600" step="5" data-jf="periodMinutes" data-ji="${i}"
+                 value="${job.periodMinutes || 90}"></div>
+        <div class="field"><label>1コマの単価(円)</label>
+          <input type="number" min="0" data-jf="periodPay" data-ji="${i}"
+                 value="${job.periodPay || ''}" placeholder="例: 1800"></div>
+        <div class="field"><label>コマ以外の時給(円)</label>
+          <input type="number" min="0" data-jf="nonPeriodWage" data-ji="${i}"
+                 value="${job.nonPeriodWage || ''}" placeholder="出ないなら0"></div>
+      </div>
+      <div class="note tight" style="margin-top:6px;">
+        コマだけの単純な時給換算は
+        <b>${job.periodPay && job.periodMinutes
+              ? yen(Math.round(Number(job.periodPay) / Number(job.periodMinutes) * 60)) + '/時'
+              : '—'}</b>
+        （${job.periodPay ? yen(job.periodPay) : '単価'} ÷ ${job.periodMinutes || 90}分 × 60）。
+        実際には授業の準備・片付け・報告書の時間ぶん拘束されるので、
+        <b>シフトの開始と終了は拘束時間で入れてください</b>。アプリはそこから本当の時給換算を出します。
+        「コマ以外の時給」が0なら、その時間は無給として計算します。
+      </div>
+      ` : `
+      <div class="grid" style="margin-top:8px;">
         <div class="field"><label>基本時給(円)</label>
           <input type="number" data-jf="baseWage" data-ji="${i}" value="${job.baseWage}"></div>
         <div class="field"><label>日祝の加算額(円)</label>
@@ -4285,7 +4448,33 @@ function renderJobs() {
             <button class="btn ghost" data-band-del="${i}" data-bi="${bi}" type="button">削除</button></div>
         </div>`).join('')}
       <button class="btn ghost sm" data-band-add="${i}" type="button">＋ 時間帯を追加</button>
+      `}
 
+      <div class="hr"></div>
+      <div class="note" style="margin-bottom:8px;"><b>最低賃金のチェック</b></div>
+      <div class="grid">
+        <div class="field"><label>勤務地の最低賃金(円/時)</label>
+          <input type="number" min="0" data-jf="minWage" data-ji="${i}"
+                 value="${job.minWage || ''}" placeholder="入れると下回った時に警告"></div>
+      </div>
+      <div class="note tight" style="margin-top:6px;">
+        入れておくと、<b>支給額 ÷ 実労働時間</b>がこれを下回った時に警告します。
+        コマ給は準備や片付けの時間を入れると下回ることがあり、その場合は差額を請求できます。<br>
+        都道府県ごとに違い、毎年10月ごろ改定されるので、ここは手入力にしています。
+        令和8年度は<b>全国加重平均1,177円</b>、最高が東京1,280円、最低が宮崎1,085円で、
+        2026年10月1日から12月2日にかけて順次発効します。お住まいの額は
+        <a href="https://www.mhlw.go.jp/stf/seisakunitsuite/bunya/koyou_roudou/roudoukijun/minimumichiran/"
+           target="_blank" rel="noopener" style="color:var(--brand); font-weight:700;">厚生労働省の一覧 ↗</a>
+        で確認してください。
+      </div>
+
+      ${isPeriodJob(job) ? `
+      <div class="note tight" style="margin-top:10px;">
+        コマ給では、深夜割増・時間外割増の自動適用と時間帯別の加算は使いません。
+        これらを計算する際の基礎になる賃金は時給換算額になるため、
+        <b>割増が出る契約なら金額が合わなくなります</b>。その月は「給与」タブの訂正入力で実際の額に直してください。
+      </div>
+      ` : `
       <div class="hr"></div>
       <div class="note" style="margin-bottom:8px;"><b>法定の割増（任意）</b></div>
       <div class="grid">
@@ -4298,6 +4487,7 @@ function renderJobs() {
         上の「時間帯別の加算額」で深夜手当を既に設定している場合、ここを「する」にすると二重に加算されます。
         どちらか一方だけを使ってください。
       </div>
+      `}
 
       <div class="hr"></div>
       <div class="note" style="margin-bottom:8px;"><b>端数処理</b></div>
@@ -4652,7 +4842,7 @@ $('theme-toggle').addEventListener('click', () => {
 });
 
 /* --- シフト入力 --- */
-['in-break', 'in-leave-hours'].forEach((id) => $(id).addEventListener('input', renderPreview));
+['in-break', 'in-leave-hours', 'in-periods'].forEach((id) => $(id).addEventListener('input', renderPreview));
 ['in-start-h','in-start-m','in-end-h','in-end-m','in-break-start','in-leave-start']
   .forEach((id) => $(id).addEventListener('change', renderPreview));
 $('in-kind').addEventListener('change', () => { renderEntryMode(); renderPreview(); });
@@ -4692,6 +4882,11 @@ $('btn-add-shift').addEventListener('click', async () => {
     };
     const bs = $('in-break-start').value;
     if (bs) shift.breakStart = bs;
+    if (isPeriodJob(getJob(STATE.activeJobId))) {
+      const periods = Number($('in-periods').value) || 0;
+      if (!periods) { alert('コマ数を入力してください'); return; }
+      shift.periods = periods;
+    }
   }
   STATE.shifts.push(shift);
   /* 追加した日がカレンダーに見えるようにしておく */
@@ -4833,7 +5028,8 @@ PROFILE_BINDINGS.forEach(([id, key, cast]) => {
 const NUMERIC_JOB_FIELDS = new Set(['baseWage','sunAdd','tripFare','passFare','passThreshold',
                                     'cutoffDay','paymentMonthsAfter','paymentDay','timeRoundUnit',
                                     'contractWeeklyHours','employerSize','fullTimeWeeklyHours',
-                                    'paidLeaveHours','paidLeaveFixed']);
+                                    'paidLeaveHours','paidLeaveFixed',
+                                    'periodMinutes','periodPay','nonPeriodWage','minWage']);
 const BOOL_JOB_FIELDS = new Set(['commuteTaxExempt','autoNightPremium','autoOvertimePremium',
                                  'paidLeaveCommute']);
 
