@@ -658,6 +658,24 @@ body.setup-mode{ padding-bottom:24px; }
 .toast .btn{ flex:0 0 auto; }
 body.setup-mode .toast{ bottom:20px; }
 
+/* ---------------- ご意見・ご要望 ---------------- */
+/* 自動送信よけ。display:none だと埋めないボットがいるので画面の外へ逃がす */
+.fb-trap{ position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden; }
+.fb-preview{
+  margin:0; font-size:11.5px; line-height:1.6; color:var(--ink-2);
+  white-space:pre-wrap; word-break:break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+textarea{ resize:vertical; min-height:92px; }
+
+/* 更新内容の箇条書き。バナーの中に入るので字は小さめ */
+.whatsnew{ margin-top:8px; }
+.whatsnew + .whatsnew{ padding-top:8px; border-top:1px solid var(--line); }
+.wn-h{ font-weight:800; font-size:12px; color:var(--ink); }
+.wn-h .wd{ color:var(--ink-3); font-weight:700; margin-left:6px; font-size:11px; }
+.whatsnew ul{ margin:4px 0 0; padding-left:1.2em; }
+.whatsnew li{ margin-top:2px; }
+
 /* ---------------- 更新の帯 ---------------- */
 .updatebar{
   position:fixed; left:12px; right:12px; z-index:55;
@@ -1422,17 +1440,60 @@ body.setup-mode .updatebar{ bottom:20px; }
     <div class="card-head"><h2>データの保存とプライバシー</h2></div>
     <div class="note">
       <b>入力したデータは、この端末のブラウザの中（localStorage）だけに保存されます。</b>
-      サーバーには一切送信されないため、作者を含め誰も見ることはできません。
+      シフト・金額・勤務先・プロフィールが外に出ることはなく、作者を含め誰も見ることはできません。
       このページが公開URLにあっても、他の人に見えるのは空のアプリだけです。
       <div class="hr"></div>
       覚えておいてほしいこと:
       <ul style="margin:6px 0 0; padding-left:1.2em;">
         <li>ブラウザの閲覧データを削除すると、入力内容も一緒に消えます</li>
         <li>スマホとパソコンでデータは共有されません（書き出し・読み込みで移せます）</li>
-        <li>外部に接続するのは「祝日の自動取得」だけです（holidays-jp.github.io）。
-            この時も、あなたのデータは送信しません</li>
+        <li>外部に接続するのは次の2つだけです
+          <ul style="margin:4px 0 0; padding-left:1.2em;">
+            <li><b>祝日の自動取得</b>（holidays-jp.github.io）。この時はこちらから何も送りません</li>
+            <li><b>「ご意見・ご要望」の送信ボタンを押した時</b>。
+                この時だけ、あなたが書いた本文（と、任意で入れた返信先・チェックした場合の調査用情報）が
+                Web3Forms というサービスを経由して作者のメールに届きます。
+                <b>保存しているシフトや金額は送られません。</b>
+                送る内容は送信前に画面でそのまま確認できます。
+                経由するサービス側も本文を読める点はご承知おきください</li>
+          </ul>
+        </li>
       </ul>
     </div>
+  </div>
+
+  <div class="card" id="feedback-card" hidden>
+    <div class="card-head"><h2>ご意見・ご要望</h2></div>
+    <div class="note" style="margin-bottom:12px;">
+      使っていて気づいたこと、欲しい機能、数字が合わないところなどを作者に送れます。
+      <b>送信ボタンを押した時だけ</b>、下の「送る内容」に出ているものだけが送られます。
+      シフトや金額などの保存データは<b>送られません</b>。
+    </div>
+    <div class="field" style="margin-bottom:10px;">
+      <label for="fb-message">内容</label>
+      <textarea id="fb-message" rows="5" maxlength="2000"
+        placeholder="例: 月の合計を週ごとにも見たいです"></textarea>
+      <div class="note tight" id="fb-count">0 / 2000文字</div>
+    </div>
+    <div class="field" style="margin-bottom:10px;">
+      <label for="fb-reply">返信してほしい場合のメールアドレス（任意）</label>
+      <input type="email" id="fb-reply" autocomplete="email" placeholder="空欄でも送れます">
+    </div>
+    <label class="check" style="margin-bottom:10px;">
+      <input type="checkbox" id="fb-diag">
+      <span>不具合の調査に使う情報を添える（金額や勤務先名は含みません）</span>
+    </label>
+    <!-- 自動送信よけ。人には見えない。 -->
+    <div class="fb-trap" aria-hidden="true">
+      <label>この欄は入力しないでください
+        <input type="text" id="fb-botcheck" tabindex="-1" autocomplete="off"></label>
+    </div>
+    <details class="acc" style="margin-bottom:12px;">
+      <summary>送る内容をそのまま見る</summary>
+      <div class="acc-body"><pre class="fb-preview" id="fb-preview">-</pre></div>
+    </details>
+    <button class="btn block" id="btn-fb-send" type="button">送信する</button>
+    <div class="note" id="fb-status" style="margin-top:10px;" hidden></div>
   </div>
 
   <div class="card">
@@ -1588,6 +1649,59 @@ const TAX_TABLE = {
     provisional: false
   }
 };
+
+/* --------------------------------------------------------------------------
+   更新履歴
+
+   新しいものを先頭に足す。APP_VERSION はこの配列の先頭から導くので、
+   触るのはここだけでよい（版の書き忘れが起きない）。
+   文面は利用者が読むものなので、内部の用語ではなく「何ができるようになったか」で書く。
+   -------------------------------------------------------------------------- */
+const CHANGELOG = [
+  { version: '2026-10-17', title: '更新のお知らせと、ご意見・ご要望',
+    items: [
+      '更新したあとに、何が変わったのかをホーム画面でお知らせするようにしました',
+      '設定タブに「ご意見・ご要望」を追加しました。気づいたことを作者に送れます'
+    ] },
+  { version: '2026-10-10', title: '更新のお知らせ／コマ給',
+    items: [
+      'アプリを直したときに、画面下に「新しいバージョンがあります」と出るようになりました',
+      '塾などの「1コマいくら」の給与に対応しました。拘束時間で割った本当の時給換算を出し、最低賃金を下回ったら警告します'
+    ] },
+  { version: '2026-10-04', title: 'カレンダーから直接入力',
+    items: [
+      '入力タブをカレンダー1枚にしました。日付をタップすると、その場でシフトを入れられます',
+      'その日に入っているぶんが入力欄のすぐ上に並び、×で消せます'
+    ] },
+  { version: '2026-09-24', title: '有給休暇',
+    items: [
+      '有給休暇を入力できるようになりました',
+      '賃金の計算方法（基本時給／時間帯別／平均賃金／固定額）をバイト先ごとに選べます'
+    ] },
+  { version: '2026-09-21', title: '年齢まわりの判定を見直し',
+    items: [
+      '年齢を「生まれた年」で持つようにして、対象年を切り替えても判定がずれないようにしました',
+      '16歳未満・70歳以上・未成年の住民税非課税など、抜けていた場合分けを埋めました',
+      '障害者控除・ひとり親控除・寡婦控除を設定から選べるようにしました'
+    ] },
+  { version: '2026-09-20', title: 'カレンダー表示と週20時間の判定',
+    items: [
+      '登録したシフトをカレンダーで見られるようになりました',
+      '社会保険の「週20時間」を、勤務先ごと・月ごとに追えるようにしました',
+      '判定がどれだけあなたの入力に支えられているかを、割合で出すようにしました'
+    ] }
+];
+const APP_VERSION = CHANGELOG[0].version;
+
+/* 保存されている版より新しい項目だけを返す。
+   版は文字列の大小では比べない（書式が変わると壊れるため）。
+   配列の中で位置を探して、それより前＝新しいものを取る。 */
+function changelogSince(seen) {
+  if (!seen) return [];
+  const i = CHANGELOG.findIndex((c) => c.version === seen);
+  /* 知らない版から来た端末には、新しいほうから3件だけ見せる */
+  return i < 0 ? CHANGELOG.slice(0, 3) : CHANGELOG.slice(0, i);
+}
 
 /* 社会保険まわりの定数 */
 const SI = {
@@ -3493,6 +3607,22 @@ function renderHome(agg) {
   /* バナー。データを失う恐れのあるものを先に出す。 */
   const banners = [];
 
+  /* 前に開いた時から版が変わっていたら、何が変わったのかを出す。
+     「閉じる」を押すまで消さない（押さずに閉じた人には次も出す）。 */
+  const fresh = changelogSince(lsGet('seenVersion'));
+  if (fresh.length) {
+    banners.push(`<div class="banner info"><span class="bi">✨</span><div>
+      <b>アプリが新しくなりました。</b>
+      ${fresh.map((c) => `
+        <div class="whatsnew">
+          <div class="wn-h">${esc(c.title)}<span class="wd">${esc(c.version)}</span></div>
+          <ul>${c.items.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
+        </div>`).join('')}
+      <div class="btn-row" style="margin-top:9px;">
+        <button class="btn sm" data-whatsnew="close" type="button">閉じる</button>
+      </div></div></div>`);
+  }
+
   if (shouldWarnIOS()) {
     banners.push(`<div class="banner crit"><span class="bi">⚠️</span><div>
       <b>このままだとデータが消えることがあります。</b>
@@ -4849,6 +4979,10 @@ $('home-banners').addEventListener('click', (e) => {
     return;
   }
   if (e.target.closest('[data-nudge="export"]')) downloadBackup(null);
+  if (e.target.closest('[data-whatsnew="close"]')) {
+    lsSet('seenVersion', APP_VERSION);
+    renderAll();
+  }
 });
 $('year-select').addEventListener('change', (e) => {
   STATE.activeYear = Number(e.target.value);
@@ -5900,6 +6034,145 @@ function bindUpdateBar() {
   });
 }
 
+/* --------------------------------------------------------------------------
+   ご意見・ご要望
+
+   このアプリはサーバーを持たないので、作者だけに届ける受け口として
+   Web3Forms を経由する。キーはクライアントに置く前提の仕様で、
+   公開ページに載っていて差し支えない（抜かれても届く先は作者のメールだけ）。
+
+   ここは唯一「利用者のデータが端末の外に出る」場所なので、
+   出すものは本人が書いた本文に限り、送る前に全文を画面に出す。
+   -------------------------------------------------------------------------- */
+const FEEDBACK_KEY = '';                     /* 空の間は意見箱ごと出さない */
+const FEEDBACK_URL = 'https://api.web3forms.com/submit';
+const FB_MIN = 10, FB_MAX = 2000;
+const FB_GAP_MS = 20 * 1000;                 /* 連打よけ */
+const FB_HOUR_MAX = 3;                       /* 1時間に送れる件数 */
+
+/* 添付する調査用の情報。金額・勤務先名・日付は一切入れない。 */
+function feedbackDiagnostics() {
+  const jobs = STATE.jobs || [];
+  return {
+    'アプリの版': APP_VERSION,
+    '画面の幅': window.innerWidth + 'px',
+    'ブラウザ': navigator.userAgent,
+    'バイト先の件数': jobs.length,
+    'シフトの件数': (STATE.shifts || []).length,
+    '受取実績の件数': (STATE.actualPayments || []).length,
+    '給与の形': jobs.some(isPeriodJob) ? 'コマ給あり' : '時給のみ',
+    '有給の記録': (STATE.shifts || []).some(isLeave) ? 'あり' : 'なし'
+  };
+}
+
+/* 実際に送る中身。プレビューと送信で同じものを使う（食い違わないように） */
+function feedbackPayload() {
+  const body = { access_key: FEEDBACK_KEY, subject: '給与ノート ご意見・ご要望',
+                 from_name: '給与ノート', botcheck: false,
+                 message: $('fb-message').value.trim() };
+  const reply = $('fb-reply').value.trim();
+  if (reply) body.replyTo = reply;
+  if ($('fb-diag').checked) Object.assign(body, feedbackDiagnostics());
+  return body;
+}
+
+function renderFeedbackPreview() {
+  const b = feedbackPayload();
+  /* access_key は送り先の識別子であって利用者の情報ではないので見せない */
+  const shown = Object.entries(b)
+    .filter(([k]) => k !== 'access_key' && k !== 'botcheck' && k !== 'from_name' && k !== 'subject')
+    .map(([k, v]) => `${k === 'message' ? '内容' : k === 'replyTo' ? '返信先' : k}: ${v || '（空）'}`);
+  $('fb-preview').textContent = shown.join('\n');
+  const n = $('fb-message').value.length;
+  $('fb-count').textContent = `${n} / ${FB_MAX}文字`;
+}
+
+function fbStatus(msg, level, withCopy) {
+  const el = $('fb-status');
+  el.hidden = !msg;
+  if (!msg) { el.innerHTML = ''; return; }
+  el.className = 'note' + (level ? ' s-' + level : '');
+  el.innerHTML = esc(msg)
+    + (withCopy ? ' <button class="btn ghost sm" id="btn-fb-copy" type="button" style="margin-left:6px;">本文をコピー</button>' : '');
+  if (withCopy) {
+    $('btn-fb-copy').addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText($('fb-message').value); toast('コピーしました'); }
+      catch (e) { toast('コピーできませんでした。手で選んでコピーしてください'); }
+    });
+  }
+}
+
+/* 事故防止の間引き。攻撃を止めるものではない（キーは公開されているため） */
+function feedbackThrottle() {
+  const now = Date.now();
+  const last = Number(lsGet('fbLastAt')) || 0;
+  if (now - last < FB_GAP_MS) {
+    return `続けて送るには${Math.ceil((FB_GAP_MS - (now - last)) / 1000)}秒ほど待ってください。`;
+  }
+  let hist = [];
+  try { hist = JSON.parse(lsGet('fbHistory') || '[]'); } catch (e) { hist = []; }
+  hist = hist.filter((t) => now - t < 3600 * 1000);
+  if (hist.length >= FB_HOUR_MAX) {
+    return `1時間に送れるのは${FB_HOUR_MAX}件までです。しばらく経ってからお願いします。`;
+  }
+  return null;
+}
+function feedbackRecordSent() {
+  const now = Date.now();
+  let hist = [];
+  try { hist = JSON.parse(lsGet('fbHistory') || '[]'); } catch (e) { hist = []; }
+  hist = hist.filter((t) => now - t < 3600 * 1000).concat(now);
+  lsSet('fbLastAt', String(now));
+  lsSet('fbHistory', JSON.stringify(hist));
+}
+
+function bindFeedback() {
+  /* 届け先が決まっていないのに入力欄を出すと、送ったつもりで消える。出さない。 */
+  $('feedback-card').hidden = !FEEDBACK_KEY;
+  if (!FEEDBACK_KEY) return;
+
+  ['fb-message', 'fb-reply'].forEach((id) =>
+    $(id).addEventListener('input', renderFeedbackPreview));
+  $('fb-diag').addEventListener('change', renderFeedbackPreview);
+  renderFeedbackPreview();
+
+  $('btn-fb-send').addEventListener('click', async () => {
+    const msg = $('fb-message').value.trim();
+    if ($('fb-botcheck').value) return;                 /* 自動送信。黙って捨てる */
+    if (msg.length < FB_MIN) {
+      fbStatus(`もう少し詳しく書いてください（${FB_MIN}文字以上）。`, 'warn'); return;
+    }
+    if (msg.length > FB_MAX) {
+      fbStatus(`${FB_MAX}文字までです。`, 'warn'); return;
+    }
+    const wait = feedbackThrottle();
+    if (wait) { fbStatus(wait, 'warn'); return; }
+
+    const btn = $('btn-fb-send');
+    btn.disabled = true;
+    fbStatus('送信しています…', null);
+    try {
+      const res = await fetch(FEEDBACK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(feedbackPayload())
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) throw new Error(data.message || '送信できませんでした');
+      feedbackRecordSent();
+      $('fb-message').value = ''; $('fb-reply').value = '';
+      renderFeedbackPreview();
+      fbStatus('送信しました。ありがとうございます。', 'good');
+    } catch (e) {
+      /* 本文は消さない。別の手段で送れるようにコピーを出す。 */
+      fbStatus('送信できませんでした（通信の状態か、送信の上限かもしれません）。'
+             + '時間をおいて試すか、本文をコピーして別の方法で知らせてください。', 'crit', true);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
 function registerServiceWorker() {
   /* Service Worker は安全なコンテキストでしか動かない。
      isSecureContext は https に加えて http://localhost も true になるので、
@@ -6065,9 +6338,14 @@ async function init() {
   $('su-pay-day').innerHTML = dayOptionsHTML(25);
   fillSetupForm();
 
+  /* 初めて開いた端末には更新のお知らせを出さない（比べる相手がいないため）。
+     版だけ控えておき、次に版が変わった時から知らせる。 */
+  if (!lsGet('seenVersion')) lsSet('seenVersion', APP_VERSION);
+
   renderStorage();
   renderAll();
   bindUpdateBar();
+  bindFeedback();
   registerServiceWorker();
   startUpdateWatch();
 
