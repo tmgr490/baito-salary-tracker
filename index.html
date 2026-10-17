@@ -659,6 +659,47 @@ body.setup-mode{ padding-bottom:24px; }
 body.setup-mode .toast{ bottom:20px; }
 
 /* ---------------- ご意見・ご要望 ---------------- */
+/* どの画面からでも押せるように左下に居座るボタン。
+   普段は薄くしておいて、操作の邪魔にならないようにする。
+   位置の取り方は .toast / .updatebar と同じで、タブバーの上に逃がす。 */
+.fab{
+  position:fixed; left:14px; z-index:50;
+  bottom:calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 12px);
+  width:44px; height:44px; border-radius:50%; padding:0;
+  /* 要素ごと薄くする（opacity）と後ろの文字が透けて汚れて見える。
+     地はタブバーと同じ塗りにして、控えめなのは字の色で出す。 */
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(18px) saturate(180%);
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  color:var(--ink-3);
+  border:1px solid var(--line-2); box-shadow:var(--shadow);
+  display:grid; place-items:center; cursor:pointer;
+  transition:color .15s;
+}
+@supports not (backdrop-filter: blur(1px)){ .fab{ background: var(--surface); } }
+.fab[hidden]{ display:none !important; }
+.fab svg{ width:20px; height:20px; display:block; }
+@media (hover: hover){ .fab:hover{ color:var(--brand); } }
+.fab:focus-visible{ color:var(--brand); }
+/* デスクトップはタブバーが下に無い */
+@media (min-width: 720px){ .fab{ bottom:20px; } }
+/* セットアップ中は出さない。先に済ませてほしいので */
+body.setup-mode .fab{ display:none !important; }
+/* 更新の帯は画面の幅いっぱいに出るので、出ている間はその上に逃がす */
+body.update-open .fab{
+  bottom:calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 74px);
+}
+@media (min-width: 720px){ body.update-open .fab{ bottom:82px; } }
+
+.fb-head{ display:flex; align-items:flex-start; gap:10px; margin-bottom:10px; }
+.fb-head h2{ flex:1 1 auto; margin:0; }
+.modal-x{
+  appearance:none; border:0; background:transparent; color:var(--ink-3); cursor:pointer;
+  font-size:19px; line-height:1; width:30px; height:30px; border-radius:8px;
+  display:grid; place-items:center; padding:0; flex:0 0 auto; margin:-4px -4px 0 0;
+}
+@media (hover: hover){ .modal-x:hover{ background:var(--line); color:var(--ink); } }
+
 /* 自動送信よけ。display:none だと埋めないボットがいるので画面の外へ逃がす */
 .fb-trap{ position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden; }
 .fb-preview{
@@ -1455,7 +1496,9 @@ body.setup-mode .updatebar{ bottom:20px; }
                 Web3Forms というサービスを経由して作者のメールに届きます。
                 <b>保存しているシフトや金額は送られません。</b>
                 送る内容は送信前に画面でそのまま確認できます。
-                経由するサービス側も本文を読める点はご承知おきください</li>
+                経由するサービス側も本文を読める点はご承知おきください。
+                なお、このサービスの仕様で<b>接続元のIPアドレス</b>も記録され、
+                作者に見える形で届きます（アプリ側では止められません）</li>
           </ul>
         </li>
       </ul>
@@ -1464,6 +1507,55 @@ body.setup-mode .updatebar{ bottom:20px; }
 
   <div class="card" id="feedback-card" hidden>
     <div class="card-head"><h2>ご意見・ご要望</h2></div>
+    <div class="note" style="margin-bottom:12px;">
+      使っていて気づいたこと、欲しい機能、数字が合わないところなどを作者に送れます。
+      画面の<b>左下のボタン</b>からは、どのタブを開いていても同じものが開きます。
+    </div>
+    <button class="btn ghost block" id="btn-fb-open-settings" type="button">ご意見・ご要望を書く</button>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>初期設定</h2></div>
+    <div class="note" style="margin-bottom:12px;">
+      最初のセットアップ画面をもう一度開きます。入力済みのシフトや実績は消えません。
+    </div>
+    <button class="btn ghost block" id="btn-rerun-setup" type="button">初期セットアップをやり直す</button>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>データの初期化</h2></div>
+    <div class="note" style="margin-bottom:12px;">
+      シフト・実績・バイト先・設定をすべて削除して、まっさらな状態に戻します。取り消せません。
+    </div>
+    <button class="btn danger block" id="btn-reset" type="button">すべてのデータをリセット</button>
+  </div>
+</section>
+
+</main>
+
+<!-- アプリが更新された時に出す帯。消えると気づけないので自動では閉じない -->
+<div class="updatebar" id="update-bar" role="status" aria-live="polite" hidden>
+  <span class="ub-dot" aria-hidden="true"></span>
+  <span class="ub-text">新しいバージョンがあります</span>
+  <button class="btn sm" id="btn-update-now" type="button">更新する</button>
+  <button class="ub-close" id="btn-update-later" type="button" aria-label="あとで">×</button>
+</div>
+
+<!-- ご意見・ご要望。どの画面からでも開ける -->
+<button class="fab" id="btn-fb-open" type="button" hidden
+        aria-label="ご意見・ご要望を書く" title="ご意見・ご要望">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.6-.7L3 21l1.9-4.8A8.4 8.4 0 0 1 12 3.1a8.4 8.4 0 0 1 9 8.4z"/>
+  </svg>
+</button>
+
+<div class="modal" id="fb-modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="fb-modal-title">
+    <div class="fb-head">
+      <h2 id="fb-modal-title">ご意見・ご要望</h2>
+      <button class="modal-x" id="btn-fb-close" type="button" aria-label="閉じる">×</button>
+    </div>
     <div class="note" style="margin-bottom:12px;">
       使っていて気づいたこと、欲しい機能、数字が合わないところなどを作者に送れます。
       <b>送信ボタンを押した時だけ</b>、下の「送る内容」に出ているものだけが送られます。
@@ -1495,32 +1587,6 @@ body.setup-mode .updatebar{ bottom:20px; }
     <button class="btn block" id="btn-fb-send" type="button">送信する</button>
     <div class="note" id="fb-status" style="margin-top:10px;" hidden></div>
   </div>
-
-  <div class="card">
-    <div class="card-head"><h2>初期設定</h2></div>
-    <div class="note" style="margin-bottom:12px;">
-      最初のセットアップ画面をもう一度開きます。入力済みのシフトや実績は消えません。
-    </div>
-    <button class="btn ghost block" id="btn-rerun-setup" type="button">初期セットアップをやり直す</button>
-  </div>
-
-  <div class="card">
-    <div class="card-head"><h2>データの初期化</h2></div>
-    <div class="note" style="margin-bottom:12px;">
-      シフト・実績・バイト先・設定をすべて削除して、まっさらな状態に戻します。取り消せません。
-    </div>
-    <button class="btn danger block" id="btn-reset" type="button">すべてのデータをリセット</button>
-  </div>
-</section>
-
-</main>
-
-<!-- アプリが更新された時に出す帯。消えると気づけないので自動では閉じない -->
-<div class="updatebar" id="update-bar" role="status" aria-live="polite" hidden>
-  <span class="ub-dot" aria-hidden="true"></span>
-  <span class="ub-text">新しいバージョンがあります</span>
-  <button class="btn sm" id="btn-update-now" type="button">更新する</button>
-  <button class="ub-close" id="btn-update-later" type="button" aria-label="あとで">×</button>
 </div>
 
 <!-- 読み込み方法の確認 -->
@@ -1661,7 +1727,7 @@ const CHANGELOG = [
   { version: '2026-10-17', title: '更新のお知らせと、ご意見・ご要望',
     items: [
       '更新したあとに、何が変わったのかをホーム画面でお知らせするようにしました',
-      '設定タブに「ご意見・ご要望」を追加しました。気づいたことを作者に送れます'
+      '「ご意見・ご要望」を追加しました。画面の左下のボタンから、どのタブを開いていても作者に送れます'
     ] },
   { version: '2026-10-10', title: '更新のお知らせ／コマ給',
     items: [
@@ -5988,10 +6054,13 @@ async function fetchPageTag() {
   } catch (e) { return null; }   /* オフラインなら黙って見送る */
 }
 
-function showUpdateBar() {
+function setUpdateBar(on) {
   const bar = $('update-bar');
-  if (bar) bar.hidden = false;
+  if (bar) bar.hidden = !on;
+  /* 帯は画面の幅いっぱいに出る。左下のボタンをその上へ逃がすため印を付ける */
+  document.body.classList.toggle('update-open', on);
 }
+function showUpdateBar() { setUpdateBar(true); }
 
 async function checkForUpdate() {
   const tag = await fetchPageTag();
@@ -6018,7 +6087,7 @@ function bindUpdateBar() {
     /* 今出ている版を控えて、同じ版では二度と出さない */
     const tag = await fetchPageTag();
     if (tag) DISMISSED_TAG = tag;
-    $('update-bar').hidden = true;
+    setUpdateBar(false);
   });
   $('btn-update-now').addEventListener('click', async () => {
     $('btn-update-now').disabled = true;
@@ -6126,10 +6195,36 @@ function feedbackRecordSent() {
   lsSet('fbHistory', JSON.stringify(hist));
 }
 
+/* 開く前にどこにいたかを覚えておき、閉じたら戻す（キーボード操作のため） */
+let fbOpener = null;
+
+function openFeedback(from) {
+  fbOpener = from || null;
+  $('fb-status').hidden = true;
+  $('fb-modal').hidden = false;
+  renderFeedbackPreview();
+  $('fb-message').focus();
+}
+
+function closeFeedback() {
+  $('fb-modal').hidden = true;
+  if (fbOpener && document.contains(fbOpener)) fbOpener.focus();
+  fbOpener = null;
+}
+
 function bindFeedback() {
   /* 届け先が決まっていないのに入力欄を出すと、送ったつもりで消える。出さない。 */
   $('feedback-card').hidden = !FEEDBACK_KEY;
+  $('btn-fb-open').hidden = !FEEDBACK_KEY;
   if (!FEEDBACK_KEY) return;
+
+  $('btn-fb-open').addEventListener('click', (e) => openFeedback(e.currentTarget));
+  $('btn-fb-open-settings').addEventListener('click', (e) => openFeedback(e.currentTarget));
+  $('btn-fb-close').addEventListener('click', closeFeedback);
+  $('fb-modal').addEventListener('click', (e) => { if (e.target.id === 'fb-modal') closeFeedback(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$('fb-modal').hidden) closeFeedback();
+  });
 
   ['fb-message', 'fb-reply'].forEach((id) =>
     $(id).addEventListener('input', renderFeedbackPreview));
@@ -6162,7 +6257,8 @@ function bindFeedback() {
       feedbackRecordSent();
       $('fb-message').value = ''; $('fb-reply').value = '';
       renderFeedbackPreview();
-      fbStatus('送信しました。ありがとうございます。', 'good');
+      closeFeedback();
+      toast('送信しました。ありがとうございます。');
     } catch (e) {
       /* 本文は消さない。別の手段で送れるようにコピーを出す。 */
       fbStatus('送信できませんでした（通信の状態か、送信の上限かもしれません）。'
