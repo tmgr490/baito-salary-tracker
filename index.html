@@ -518,6 +518,12 @@ details.conf-acc > .acc-body{ padding:0 11px 11px; }
 }
 .cal-chip.ovn{ background:color-mix(in srgb, var(--st-warn) 22%, transparent); color:var(--st-warn-ink); }
 .cal-chip.leave{ background:color-mix(in srgb, var(--cal-sat) 20%, transparent); color:var(--cal-sat); }
+/* メモはチップの直後。マスの幅には収まらないので1行で切る */
+.cal-memo{
+  font-size:8.5px; font-weight:700; line-height:1.5; color:var(--ink-3);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  padding:0 1px; letter-spacing:-.02em;
+}
 .cal-more{ font-size:9px; font-weight:700; color:var(--ink-3); text-align:center; }
 .cal-sum{
   margin-top:10px; padding:9px 11px; border-radius:var(--r-sm);
@@ -540,6 +546,21 @@ details.conf-acc > .acc-body{ padding:0 11px 11px; }
 .cal-row .m{ font-size:11px; color:var(--ink-3); margin-top:2px; }
 .cal-row .p{ margin-left:auto; font-size:13px; font-weight:800; font-variant-numeric:tabular-nums; }
 .cal-row .badges{ margin-top:3px; }
+/* メモの全文。改行も入れたまま出す */
+.cal-note{
+  margin-top:5px; font-size:12px; line-height:1.6; color:var(--ink);
+  white-space:pre-wrap; word-break:break-word;
+}
+.lnk{
+  appearance:none; border:0; background:transparent; padding:0; cursor:pointer;
+  font:inherit; font-size:11px; font-weight:700; color:var(--brand);
+  margin-top:4px; text-align:left;
+}
+@media (hover: hover){ .lnk:hover{ text-decoration:underline; } }
+.tbl-memo{
+  font-size:11px; color:var(--ink-2); font-weight:600; margin-top:3px;
+  white-space:normal; word-break:break-word; text-align:right;
+}
 .cal-empty{ padding:11px; font-size:11.5px; color:var(--ink-3); display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 /* タップした日に入れるフォーム。カレンダーの続きだと分かるよう区切りを入れる */
 .cal-form{ margin-top:14px; padding-top:14px; border-top:1px solid var(--line); }
@@ -554,6 +575,7 @@ details.conf-acc > .acc-body{ padding:0 11px 11px; }
   .cal-cell{ min-height:78px; padding:5px; gap:3px; }
   .cal-d{ font-size:11.5px; }
   .cal-chip{ font-size:10.5px; padding:1px 5px; }
+  .cal-memo{ font-size:10px; padding:0 4px; }
   .cal-wd{ font-size:11.5px; }
 }
 
@@ -1098,6 +1120,10 @@ body.setup-mode .updatebar{ bottom:20px; }
             <select id="in-break-start" aria-label="休憩開始時刻"></select>
           </div>
         </div>
+        <div class="field" id="wrap-note" style="margin-top:10px;">
+          <label for="in-note">メモ（任意）</label>
+          <input type="text" id="in-note" maxlength="200" placeholder="例: 研修、レジ、棚卸し">
+        </div>
         <div class="note tight" id="entry-hint" style="margin:8px 0 12px;"></div>
         <div class="banner info" id="entry-preview" style="margin-bottom:12px;"><span class="bi">🧮</span><div id="entry-preview-body">-</div></div>
         <button class="btn block" id="btn-add-shift" type="button">シフトを追加</button>
@@ -1589,6 +1615,26 @@ body.setup-mode .updatebar{ bottom:20px; }
   </div>
 </div>
 
+<!-- シフトのメモ。一覧は再描画で作り直されるので、書いている途中が消えないよう別に開く -->
+<div class="modal" id="memo-modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="memo-modal-title">
+    <div class="fb-head">
+      <h2 id="memo-modal-title">メモ</h2>
+      <button class="modal-x" id="btn-memo-close" type="button" aria-label="閉じる">×</button>
+    </div>
+    <div class="note tight" id="memo-modal-sub" style="margin-bottom:10px;"></div>
+    <div class="field" style="margin-bottom:12px;">
+      <label for="memo-text" class="sr-only">メモの内容</label>
+      <textarea id="memo-text" rows="3" maxlength="200"
+        placeholder="例: 研修、レジ、棚卸し"></textarea>
+    </div>
+    <div class="note tight" style="margin-bottom:12px;">
+      空のまま保存すると、このシフトのメモを消します。
+    </div>
+    <button class="btn block" id="btn-memo-save" type="button">保存する</button>
+  </div>
+</div>
+
 <!-- 読み込み方法の確認 -->
 <div class="modal" id="import-modal" hidden>
   <div class="modal-card">
@@ -1724,6 +1770,11 @@ const TAX_TABLE = {
    文面は利用者が読むものなので、内部の用語ではなく「何ができるようになったか」で書く。
    -------------------------------------------------------------------------- */
 const CHANGELOG = [
+  { version: '2026-10-21', title: 'シフトにメモ',
+    items: [
+      'シフトや有給にひとことメモを書けるようにしました。カレンダーのマスにも出ます',
+      'メモは日付をタップしたときの一覧から、あとで書き直せます'
+    ] },
   { version: '2026-10-17', title: '更新のお知らせと、ご意見・ご要望',
     items: [
       '更新したあとに、何が変わったのかをホーム画面でお知らせするようにしました',
@@ -3873,7 +3924,8 @@ function renderShiftTable(list) {
     return `<tr>
       <td class="n">${s.date.slice(5)}<span class="wd">(${WD[d.getDay()]})</span></td>
       <td class="n">${isLeave(s) ? '<span class="wd">終日</span>' : `${s.start}-${s.end}`}
-        ${marks.length ? `<div class="badges" style="justify-content:flex-end">${marks.join('')}</div>` : ''}</td>
+        ${marks.length ? `<div class="badges" style="justify-content:flex-end">${marks.join('')}</div>` : ''}
+        ${s.note ? `<div class="tbl-memo">${esc(s.note)}</div>` : ''}</td>
       <td class="n">${r.hours.toFixed(2)}h</td>
       <td class="n"><b>${yen(shiftPay(s))}</b></td>
       <td class="act"><button class="x-btn" data-del-shift="${esc(s.id)}" type="button"
@@ -3922,22 +3974,28 @@ function renderCalendar(byDate) {
     if (wd === 0 || isHoliday(key)) cls.push('hol');
     else if (wd === 6) cls.push('sat');
 
-    /* 3本以上はセルからあふれるので、2本＋「他N件」にする */
+    /* 3本以上はセルからあふれるので、2本＋「他N件」にする。
+       メモはそのシフトのチップの直後に置く。どれのメモか分かるように。 */
     const chips = shifts.slice(0, 2).map((s) => {
+      let chip;
       if (isLeave(s)) {
         const h = calcShift(s).hours;
-        return `<div class="cal-chip leave">有給${h ? h + 'h' : ''}</div>`;
+        chip = `<div class="cal-chip leave">有給${h ? h + 'h' : ''}</div>`;
+      } else {
+        const over = timeToHours(s.end) <= timeToHours(s.start);
+        const n = Number(s.periods) || 0;
+        chip = `<div class="cal-chip${over ? ' ovn' : ''}">${
+          n ? n + 'コマ' : compactTime(s.start) + '-' + compactTime(s.end)}</div>`;
       }
-      const over = timeToHours(s.end) <= timeToHours(s.start);
-      const n = Number(s.periods) || 0;
-      return `<div class="cal-chip${over ? ' ovn' : ''}">${
-        n ? n + 'コマ' : compactTime(s.start) + '-' + compactTime(s.end)}</div>`;
+      return chip + (s.note ? `<div class="cal-memo">${esc(s.note)}</div>` : '');
     }).join('');
     const more = shifts.length > 2 ? `<div class="cal-more">他${shifts.length - 2}件</div>` : '';
+    const noted = shifts.filter((s) => s.note).length;
 
     html += inMonth
       ? `<button type="button" class="${cls.join(' ')}" data-cal-d="${key}"
-           aria-label="${m}月${d.getDate()}日${shifts.length ? ` シフト${shifts.length}件` : ''}"
+           aria-label="${m}月${d.getDate()}日${shifts.length ? ` シフト${shifts.length}件` : ''}${
+             noted ? ` メモ${noted}件` : ''}"
            ${key === STATE.calDay ? 'aria-pressed="true"' : ''}>
            <div class="cal-d">${d.getDate()}</div>${chips}${more}
          </button>`
@@ -3995,6 +4053,9 @@ function renderCalDay(byDate) {
                   (minWageCheck(getJob(s.jobId), r.period.perHour) || {}).below ? ' bad' : ''
                 }">時給換算 ${yen(Math.round(r.period.perHour))}</span>` : '')}</div>
           ${marks.length ? `<div class="badges">${marks.join('')}</div>` : ''}
+          ${s.note ? `<div class="cal-note">${esc(s.note)}</div>` : ''}
+          <button class="lnk" type="button" data-memo-shift="${esc(s.id)}">${
+            s.note ? 'メモを直す' : 'メモを書く'}</button>
         </div>
         <div class="p">${yen(shiftPay(s))}</div>
         <button class="x-btn" data-del-shift="${esc(s.id)}" type="button"
@@ -5128,7 +5189,12 @@ $('btn-add-shift').addEventListener('click', async () => {
       shift.periods = periods;
     }
   }
+  const note = $('in-note').value.trim();
+  if (note) shift.note = note;
+
   STATE.shifts.push(shift);
+  /* メモは時刻と違って使い回さない。消しておかないと次の日に紛れ込む */
+  $('in-note').value = '';
   /* 追加した日がカレンダーに見えるようにしておく */
   STATE.calMonth = shift.date.slice(0, 7);
   STATE.calDay = shift.date;
@@ -5183,7 +5249,54 @@ $('cal-grid').addEventListener('click', (e) => {
 });
 $('cal-day').addEventListener('click', (e) => {
   const del = e.target.closest('[data-del-shift]');
-  if (del) deleteShift(del.dataset.delShift);
+  if (del) { deleteShift(del.dataset.delShift); return; }
+  const memo = e.target.closest('[data-memo-shift]');
+  if (memo) openMemo(memo.dataset.memoShift, memo);
+});
+
+/* --- シフトのメモ --- */
+/* 一覧は renderAll() で作り直されるので、その場で書かせると打っている途中が消える。
+   別に開いて、保存した時だけ書き戻す。 */
+let memoShiftId = null;
+let memoOpener = null;
+
+function openMemo(id, from) {
+  const s = STATE.shifts.find((x) => x.id === id);
+  if (!s) return;
+  memoShiftId = id;
+  memoOpener = from || null;
+  const d = parseYMD(s.date);
+  $('memo-modal-sub').textContent =
+    `${d.getMonth() + 1}月${d.getDate()}日(${WD[d.getDay()]}) `
+    + (isLeave(s) ? '有給休暇' : `${s.start}–${s.end}`);
+  $('memo-text').value = s.note || '';
+  $('memo-modal').hidden = false;
+  $('memo-text').focus();
+}
+
+function closeMemo() {
+  $('memo-modal').hidden = true;
+  memoShiftId = null;
+  if (memoOpener && document.contains(memoOpener)) memoOpener.focus();
+  memoOpener = null;
+}
+
+$('btn-memo-close').addEventListener('click', closeMemo);
+$('memo-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'memo-modal') closeMemo();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('memo-modal').hidden) closeMemo();
+});
+$('btn-memo-save').addEventListener('click', async () => {
+  const s = STATE.shifts.find((x) => x.id === memoShiftId);
+  if (!s) { closeMemo(); return; }
+  const text = $('memo-text').value.trim();
+  /* 空にしたら消す。メモを消す手段をもう1つ作らずに済む */
+  if (text) s.note = text; else delete s.note;
+  closeMemo();
+  await save('shifts');
+  renderAll();
 });
 
 /* --- 給与サイクル --- */
